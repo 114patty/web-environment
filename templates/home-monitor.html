@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <link rel="stylesheet" href="/static/css/theme.css"> 
+    <script src="/static/js/theme.js" defer></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>居家追蹤</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: var(--theme-bg, #f6f3e8);
+        color: #333;
+        margin: 20px;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: auto;
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+        text-align: center;
+        color: var(--theme-heading);
+        margin-bottom: 20px;
+    }
+    .header-title {
+    position: relative;  
+    text-align: center;
+    }
+        /* 側邊欄樣式 */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: -200px; /* 預設隱藏 */
+            width: 200px;
+            height: 100%;
+            background-color: #f4f4f4;
+            border-right: 1px solid #ccc;
+            padding-top: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: left 0.3s ease;
+            z-index: 2000;
+        }
+
+        #sidebar h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #sidebar a {
+            display: block;
+            padding: 12px;
+            text-decoration: none;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            transition: background-color 0.3s;
+        }
+
+        #sidebar a:hover {
+            background-color: #ddd;
+        }
+         /* 主內容 */
+        #main-content {
+            transition: margin-left 0.3s ease;
+            padding: 20px;
+        }
+
+        /* 側邊欄按鈕 */
+        #sidebar-btn {
+            position: fixed;
+            top: 40px;
+            left: 0;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            transition: left 0.3s ease;
+            z-index: 2100;
+        }
+
+        /* hover 時展開側邊欄並推動主內容 */
+        #sidebar-btn:hover + #sidebar,
+        #sidebar:hover {
+            left: 0;
+        }
+
+        .content {
+        display: flex;       /* 讓圖片和方框左右排列 */
+        gap: 20px;           /* 中間空隙 */
+        align-items: flex-start; /* 頂端對齊 */
+        }
+
+        .floorplan {
+        flex: 2; /* 左邊圖片佔比較大空間 */
+        }
+
+        .info-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .floorplan-img {
+        width: 100%;
+        max-width: 600px;
+        height: auto;
+        display: block;
+        }
+
+        .box {
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: var(--theme-section);
+            min-height: 100px;
+            border: 1px solid var(--theme-border);
+        }
+
+        .box h3 {
+            margin: 0 0 10px 0;
+            text-align: center;
+        }
+  
+</style>
+</head>
+<body>
+    <div id="sidebar-container"></div>
+    <script src="/static/js/sidebar.js"></script>
+
+
+    <div class="container">
+        <div class="header-title">
+            <h1 style="margin:0;">居家追蹤</h1>
+        </div>
+
+    
+        <h2>家裡平面圖</h2>
+        <div class="content">
+            <!-- 左邊圖片 -->
+            <div class="floorplan">
+        <img src="/static/images/A.png" alt="家裡平面圖" class="floorplan-img">
+    </div>
+    
+    <!-- 右邊方框 -->
+    <div class="info-panel">
+        <div class="box">
+          <h3>目前動作</h3>
+          <p>姿態:</p>
+          <p>持續時間:</p>
+        </div>
+        <div class="box">
+          <h3>生理訊號</h3>
+          <p>心率:</p>
+          </p>血壓:</p>
+          </p>血氧:</p>
+        </div>
+        <div class="box">
+          <h3>行為</h3>
+          <p>位置:</p>
+          <p>活動模式:</p>
+          <p>姿態:</p>
+          <p>持續時間:</p>
+        </div>
+    </div>
+</div>
+<h2>路徑圖</h2>
+</div>
+
+<script>
+  
+
+
+</script>
+</body>
+</html>

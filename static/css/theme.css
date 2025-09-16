@@ -1,0 +1,142 @@
+:root {
+    --theme-bg: #f6f3e8;           /* 主背景：柔米白 */
+    --theme-surface: #ffffff;           /* 容器底色 */
+    --theme-section: #fbf9f3;          /* 區塊底色 */
+    --theme-text: #333333;              /* 主要文字顏色 */
+    --theme-heading: #136bc9;          /* 標題藍色（如 IMU 姿態監測） */
+    --theme-border: #ccc5b9;            /* 邊框色：柔灰 */
+    --theme-tab-bg: #fdfaf3;
+    --theme-tab-active-bg: #ffffff;
+
+    --theme-table-header-bg: #d0ecf8;   /* 表格 header 背景藍 */
+    --theme-table-border: #b0bec5;      /* 表格框線淺藍灰 */
+}
+
+
+body {
+    background-color: var(--theme-bg);
+    color: var(--theme-text);
+    font-family: Arial, sans-serif;
+    margin: 20px; 
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    background: var(--theme-surface);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: 1px solid var(--theme-border);
+}
+
+.data-section {
+    background-color: var(--theme-section);
+    border: 1px solid var(--theme-border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.tab {
+    background-color: var(--theme-tab-bg);
+    border: 1px solid var(--theme-border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+.card {
+    background: var(--theme-surface);        
+}
+.btn {
+    background: var(--theme-surface);       
+}
+
+/* 表格樣式（選用） */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    background-color: var(--theme-table-header-bg);
+    color: var(--theme-text);
+    border: 1px solid var(--theme-table-border);
+    padding: 8px;
+    text-align: center;
+}
+
+/* 分頁資料區塊 */
+.dashboard-body {
+    background-color: var(--theme-section);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    border: 1px solid var(--theme-border);
+}
+
+/* 側邊欄樣式 */
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: -200px;
+    width: 200px;
+    height: 100%;
+    background-color: #f4f4f4;
+    border-right: 1px solid #ccc;
+    padding-top: 20px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: left 0.3s ease;
+    z-index: 2000;
+}
+
+#sidebar h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+#sidebar a {
+    display: block;
+    padding: 12px;
+    text-decoration: none;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    transition: background-color 0.3s;
+}
+
+#sidebar a:hover {
+    background-color: #eaeaea;
+}
+
+/* 主內容 */
+#main-content {
+    transition: margin-left 0.3s ease;
+    padding: 20px;
+}
+
+/* 側邊欄按鈕 */
+#sidebar-btn {
+    position: fixed;
+    top: 40px;
+    left: 0;
+    background-color: #333;
+    color: white;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 0 5px 5px 0;
+    transition: left 0.3s ease;
+    z-index: 2100;
+}
+
+/* hover 時展開側邊欄並推動主內容 */
+#sidebar-btn:hover + #sidebar,
+#sidebar:hover {
+    left: 0;
+}
+
+h1, .section-title {
+    color: var(--theme-heading);
+}
+

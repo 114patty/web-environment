@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <link rel="stylesheet" href="/static/css/theme.css"> 
+    <script src="/static/js/theme.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>選擇主題顏色</title>
+<style>
+:root {
+    --theme-bg: #f6f3e8;
+    --theme-surface: #ffffff;
+    --theme-section: #fbf9f3; 
+    --theme-text: #333333;
+    --theme-border: #b0a99f;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: var(--theme-bg);
+    color: var(--theme-text);
+    margin: 20px;
+    font-size: 18px;
+}
+
+/* 側邊欄樣式 */
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: -200px;
+    width: 200px;
+    height: 100%;
+    background-color: var(--theme-surface);
+    border-right: 1px solid var(--theme-border);
+    padding-top: 20px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: left 0.3s ease;
+    z-index: 2000;
+}
+
+#sidebar h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+#sidebar a {
+    display: block;
+    padding: 12px;
+    text-decoration: none;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    transition: background-color 0.3s;
+}
+
+#sidebar a:hover {
+    background-color: #eaeaea;
+}
+
+/* 主內容 */
+#main-content {
+    transition: margin-left 0.3s ease;
+    padding: 20px;
+}
+
+#sidebar-btn {
+    position: fixed;
+    top: 40px;
+    left: 0;
+    background-color: #333;
+    color: white;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 0 5px 5px 0;
+    transition: left 0.3s ease;
+    z-index: 2100;
+}
+
+#sidebar-btn:hover + #sidebar,
+#sidebar:hover {
+    left: 0;
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    background: var(--theme-surface);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--theme-border);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--theme-heading);
+}
+
+.data-section {
+    background-color: var(--theme-section);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--theme-border);
+    margin-bottom: 20px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.card {
+    background: var(--theme-surface);
+    border: 1px solid var(--theme-border);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+}
+
+.swatch {
+    width: 100%;
+    height: 56px;
+    border-radius: 6px;
+    border: 1px solid var(--theme-border);
+}
+
+.btn {
+    padding: 6px 10px;
+    border: 1px solid var(--theme-border);
+    border-radius: 6px;
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.btn:hover {
+    background: #f5f5f5;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.muted {
+    color: #666;
+    font-size: 12px;
+}
+</style>
+</head>
+<body>
+    <div id="sidebar-container"></div>
+    <script src="/static/js/sidebar.js"></script>
+
+    <div class="container">
+        <div class="header-title">
+            <h1 style="margin:0;">選擇主題顏色</h1>
+    </div>
+
+    <!-- 預設 -->
+    <div class="data-section">
+        <div class="row" style="justify-content:space-between;">
+            <div>
+                <div style="font-weight:bold;">預設</div>
+                <div class="muted">恢復系統預設背景色</div>
+            </div>
+            <button class="btn" onclick="resetTheme()">使用預設</button>
+        </div>
+    </div>
+
+    <!-- 常用配色 -->
+    <div class="data-section">
+        <h3>主題配色</h3>
+        <div class="grid" id="paletteGrid"></div>
+    </div>
+
+    <!-- 自訂色彩 -->
+    <!-- <div class="data-section">
+        <h3>自訂色彩</h3>
+        <div class="row" style="justify-content:space-between;">
+            <div class="row">
+                <input type="color" id="customColor" value="#f6f3e8" style="width:44px; height:44px; border:none; background:none; padding:0;">
+                <input type="text" id="customHex" value="#f6f3e8" style="width:120px; padding:6px 8px; border:1px solid var(--theme-border); border-radius:6px;">
+            </div>
+            <div class="row">
+                <button class="btn" onclick="previewCustom()">預覽</button>
+                <button class="btn" onclick="matchcolorTheme(getCustom(), 'auto')">套用</button>
+            </div>
+        </div>
+        <div class="muted" style="margin-top:6px;">
+            支援 #RRGGBB（含 #）。Cookie 版會導向 /set_theme/&lt;color&gt;，LocalStorage 版會寫入並回主頁。
+        </div> -->
+    </div>
+</div>
+
+<script>
+const PALETTES = [
+    {
+        name: '溫暖米黃',
+        bg: '#f6f3e8',
+        surface: '#ffffff',
+        section: '#fbf9f3',
+        text: '#333333',
+        heading: '#b65c1a', 
+        border: '#b0a99f',
+        "table-border": '#d6c9aa'
+    },
+    {
+        name: '清新綠色',
+        bg: '#e8f5e9',
+        surface: '#ffffff',
+        section: '#d0f0d8',
+        text: '#2e4d2e',
+        heading: '#1d5e3d',
+        border: '#8fbf99',
+        "table-border": '#6a8f7b'
+    },
+    {
+        name: '高對比黑白',
+        bg: '#ffffff',
+        surface: '#f9f9f9',
+        section: '#efefef',
+        text: '#000000',
+        heading: '#d62828',
+        border: '#666666',
+        "table-border": '#888888'
+    },
+    {
+        name: '溫和黃綠',
+        bg: '#f5f8ec',
+        surface: '#ffffff',
+        section: '#eef4d7',
+        text: '#2e2e1f',
+        heading: '#6d8720',
+        border: '#b5b58f',
+        "table-border": "#c4c7a0",
+        "table-header-bg": "#f0f4cc"
+    },
+    {
+        name: '淡藍護眼',
+        bg: '#e9f4f9',
+        surface: '#ffffff',
+        section: '#d9ebf2',
+        text: '#1d2b36',
+        heading: '#296b9e',
+        border: '#8ab0c6',
+        "table-border": "#a1c3d3",
+        "table-header-bg": "#cde7f0"
+    }
+];
+
+// 建立主題卡片
+const grid = document.getElementById('paletteGrid');
+PALETTES.forEach(theme => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+        <div class="swatch" style="background:${theme.bg};"></div>
+        <div style="margin-top:6px;">${theme.name}</div>
+        <button class="btn" style="margin-top:6px;">套用</button>
+    `;
+    card.querySelector('button').onclick = () => setTheme(theme);
+    grid.appendChild(card);
+});
+
+// 套用主題（整組變數）
+function setTheme(theme) {
+    for (let key in theme) {
+        document.documentElement.style.setProperty(`--theme-${key}`, theme[key]);
+        localStorage.setItem(`theme-${key}`, theme[key]);
+    }
+}
+
+// 預設主題（清除 localStorage）
+function resetTheme() {
+    const keysToClear = [
+        'bg', 'surface', 'section', 'text', 'border',
+        'heading', 'tab-bg', 'tab-active-bg',
+        'table-header-bg', 'table-border'
+    ];
+
+    keysToClear.forEach(k => {
+        localStorage.removeItem(`theme-${k}`);
+    });
+    document.cookie = 'themeColor=; Max-Age=0; path=/';
+    window.location.href = 'theme';
+}
+
+// 載入上次主題
+(function() {
+    const keys = [
+        'bg', 'surface', 'section', 'text', 'border',
+        'heading', 'tab-bg', 'tab-active-bg',
+        'table-header-bg', 'table-border'
+    ];
+    keys.forEach(key => {
+        const val = localStorage.getItem(`theme-${key}`);
+        if (val) {
+            document.documentElement.style.setProperty(`--theme-${key}`, val);
+        }
+    });
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>姿態時間軸測試</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+  <canvas id="postureTimelineChart" width="900" height="400"></canvas>
+
+  <script>
+    const postureColors = {
+      '1': '#4CAF50', // 坐姿
+      '2': '#2196F3', // 站立
+      '3': '#FFC107', // 躺臥
+      '4': '#FF9800', // 右躺
+      '5': '#F44336', // 跌倒
+      '6': '#9C27B0', // 趴臥
+      '7': '#795548', // 左躺
+      '8': '#607D8B', // 走路
+      'unknown': '#9E9E9E' // 未知
+    };
+    
+    const postureText = {
+      '1': '坐姿',
+      '2': '站立',
+      '3': '躺臥',
+      '4': '右躺',
+      '5': '跌倒',
+      '6': '趴臥',
+      '7': '左躺',
+      '8': '走路',
+      'unknown': '未知'
+    };
+    
+    const ctx = document.getElementById('postureTimelineChart').getContext('2d');
+    
+    const postureChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        datasets: [{
+          label: '姿態',
+          data: [],
+          backgroundColor: [],
+          borderSkipped: false,
+          barPercentage: 0.8,
+          categoryPercentage: 0.9
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: 'minute', tooltipFormat: 'HH:mm:ss' },
+            min: Date.now() - 5*60*1000,
+            max: Date.now(),
+            title: { display: true, text: '時間' }
+          },
+          y: {
+            type: 'category',
+            labels: ["坐姿", "站立", "躺臥", "右躺", "左躺", "趴臥", "走路", "跌倒", "未知"],
+            title: { display: true, text: '姿態' }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const [start, end] = context.raw.x;
+                return `${context.raw.posture} (${new Date(start).toLocaleTimeString()} - ${new Date(end).toLocaleTimeString()})`;
+              }
+            }
+          },
+          legend: { display: false }
+        }
+      }
+    });
+    
+    let lastTimestamp = null;
+    
+    // ✅ 只追加新資料，不會清掉舊資料
+    async function fetchPostureData() {
+      try {
+        const response = await fetch("http://localhost:5000/api/latest_data");
+        const postureChanges = await response.json();
+        console.log("取得資料:", postureChanges);
+    
+        if (postureChanges.length === 0) return;
+    
+        for (let i = 0; i < postureChanges.length; i++) {
+          const start = new Date(postureChanges[i].timestamp);
+          const state = postureChanges[i].Posture_state?.toString() || "unknown";
+          const postureName = postureText[state] || "未知";
+    
+          // 如果資料比最後時間舊，就跳過
+          if (lastTimestamp && start <= lastTimestamp) continue;
+    
+          const dataset = postureChart.data.datasets[0].data;
+          const colors = postureChart.data.datasets[0].backgroundColor;
+          const lastEntry = dataset[dataset.length - 1];
+    
+          if (lastEntry && lastEntry.posture === postureName) {
+            // ✅ 如果姿態沒變，延長最後一筆的時間
+            lastEntry.x[1] = start;
+          } else {
+            // ✅ 姿態有變 → 新增一筆
+            dataset.push({
+              x: [start, new Date(start.getTime() + 5000)],
+              y: postureName,
+              posture: postureName
+            });
+            // colors.push(postureColors[state] || postureColors["unknown"]);
+          }
+    
+          lastTimestamp = start;
+        }
+    
+        // ✅ 時間軸滾動，只顯示最近 5 分鐘
+        postureChart.options.scales.x.min = Date.now() - 5*60*1000;
+        postureChart.options.scales.x.max = Date.now();
+    
+        postureChart.update();
+      } catch (error) {
+        console.error("抓取 API 失敗:", error);
+      }
+    }
+    
+    fetchPostureData();
+    setInterval(fetchPostureData, 2000);
+    </script>
+</body>
+</html>

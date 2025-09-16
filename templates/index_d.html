@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMU 姿態數據監測</title>
+    
+    <style>
+        body { font-family: Arial, sans-serif;transition: margin-left 0.3s ease; margin: 20px; background-color: var(--theme-bg, #f6f3e8);; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #136bc9; }
+
+        .data-section {
+            background-color: #fbf9f3; 
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: auto;           /* 根據內容自動調整表格寬度 */
+            max-width: 100%;       /* 避免超出容器寬度 */
+            table-layout: auto;    
+            margin-bottom: 20px; /* Add some space below table */
+        }
+          /* 側邊欄樣式 */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: -200px; /* 預設隱藏 */
+            width: 200px;
+            height: 100%;
+            background-color: #f4f4f4;
+            border-right: 1px solid #ccc;
+            padding-top: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: left 0.3s ease;
+            z-index: 2000;
+        }
+
+        #sidebar h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #sidebar a {
+            display: block;
+            padding: 12px;
+            text-decoration: none;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            transition: background-color 0.3s;
+        }
+
+        #sidebar a:hover {
+            background-color: #ddd;
+        }
+         /* 主內容 */
+        #main-content {
+            transition: margin-left 0.3s ease;
+            padding: 20px;
+        }
+
+        /* 側邊欄按鈕 */
+        #sidebar-btn {
+            position: fixed;
+            top: 40px;
+            left: 0;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            transition: left 0.3s ease;
+            z-index: 2100;
+        }
+
+        /* hover 時展開側邊欄並推動主內容 */
+        #sidebar-btn:hover + #sidebar,
+        #sidebar:hover {
+            left: 0;
+        }
+
+        #sidebar-btn:hover ~ #main-content,
+        #sidebar:hover ~ #main-content {
+            margin-left: 200px;
+        }
+        /* 表格樣式 */
+        table th,
+        table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+        white-space: nowrap;
+        }
+        table th {
+        background-color: #ceedef;
+        }
+        /* 電量 */
+        .battery-display {
+        position: absolute;
+        top: 0;
+        right: 50px; /* 可依需求微調距離 */
+        font-size: 14px;
+        color: #007b00;
+        }
+        .header-title {
+        position: relative;  /* 讓 .battery-display 的 absolute 參考這個容器 */
+        text-align: center;
+        }
+        /* 今日消耗資訊 */
+        .summary-text {
+        font-size: 18px;
+        margin-bottom: 20px;
+        color: #d39052;
+        }
+        /* 姿態圖表外框 */
+        .chart-container {
+            width: 100%;
+            max-width: 820px; /* Match container max-width - padding */
+            margin: 20px auto;
+            background: #fdfdfd;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        /* 分頁容器 */
+        #macTabs {
+        display: flex;
+        /* border-bottom: 2px solid #ccc; */
+        margin-bottom: 16px;
+        padding-left: 8px;
+        overflow-x: auto;
+        }
+        /* 分頁按鈕（未選取狀態） */
+        .mac-tab {
+        padding: 8px 16px;
+        background: #e4dcc4;
+        /* border: 1px solid #ccc; */
+        border: none;
+        border-radius: 12px 12px 0 0;
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        margin-right: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .mac-tab:hover {
+        background:#d3d7dc;   /* 滑鼠移上去變淺灰 */
+        }
+        /* 分頁按鈕（選取狀態） */
+        .mac-tab.active {
+        background: #ffffff;
+        border-color: #aaaaaa;
+        border-bottom: 2px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        /* 右鍵選單 */
+        .custom-context-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+            z-index: 9999;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .custom-context-menu:hover {
+            background-color: #f5f5f5;
+        }
+
+        :root {
+            --theme-bg: #f6f3e8; /* 主背景 */
+            --theme-text: #333333; /* 文字 */
+            --theme-tab-bg: #f6f3e8; /* 分頁背景 */
+            --theme-tab-active-bg: #ffffff; /* 選中分頁背景 */
+        }
+
+        .theme-tab {
+            background-color: var(--theme-tab-bg);
+            color: var(--theme-tab-text);
+        }
+
+        .theme-tab.active {
+            background-color: var(--theme-tab-active-bg);
+        }
+
+
+    </style>
+</head>
+<body>
+    <!-- 側邊欄縮小按鈕 -->
+    <div id="sidebar-btn">☰</div>
+    <!-- 側邊欄 -->
+    <div id="sidebar">
+        <h2>功能選單</h2>
+        <a href="/dashboard" id="home">🏠 主頁</a>  
+        <a href="#" id="history">📜 歷史紀錄</a>
+        <a href="#" id="settings">⚙️ 設定</a>
+        <a href="/theme" id="theme-link">🎨 主題顏色</a>
+    </div>
+    
+
+    <div class="container">
+        <div class="header-title">
+            <h1>IMU 姿態數據監測</h1>
+        </div>
+        <div style="position: relative;">
+            <span class="battery-display" id="safe_battery">電量：--%</span>
+            <p>每 1 秒自動更新數據      最後更新時間：<span id="lastUpdateTime">--</span></p>
+
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label for="macSelector">選擇裝置：</label>
+            <select id="macSelector">
+                <option disabled selected>載入中...</option>
+            </select>
+            <button onclick="addSelectedMacTab()">➕ 加入裝置</button>
+            </div>
+
+        <!-- 分頁區 -->
+        <div id="macTabs"></div>
+
+            <!-- 分頁 + 數據區塊 -->
+            <div class="data-section">
+
+        <h2>最新數據</h2>
+        <table id="dataDisplay">
+            <thead>
+                <tr>
+                    <th>時間戳</th>
+                    <th>設備 MAC</th>
+                    <th>姿態狀態 </th>
+                    <th>Roll (傾斜)</th>
+                    <th>Pitch (俯仰)</th>
+                    <th>Yaw (偏航)</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+
+        <h2 style="margin-top: 30px;">生理數據</h2>
+        <p class="summary-text">
+            今日消耗 熱量：<span id="Calories">--</span> 大卡 /
+            步數：<span id="Step">--</span> 步 /
+            距離：<span id="Mileage">--</span> 公里
+        </p>
+        <table id="environmentDataDisplay">
+            <thead>
+                <tr>
+                    <th>時間戳</th>
+                    <th>心率</th>
+                    <th>血壓</th>
+                    <th>血氧</th>
+                    <th>體溫 (°C)</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+
+        <h2 style="margin-top: 30px;">動態分析</h2>
+        <div>
+            <label for="timeWindowSelector" style="margin-left: 20px;">顯示時間區間：</label>
+            <select id="timeWindowSelector">
+                <option value="60">近 1 分鐘</option>
+                <option value="300">近 5 分鐘</option>
+                <option value="600">近 10 分鐘</option>
+                <option value="3600">近 1 小時</option>
+                <option value="18000">近 5 小時</option>
+                <option value="36000">近 10 小時</option>
+                <option value="86400">近 24 小時</option>
+            </select>
+          </div>
+        <div class="chart-container">
+    <div style="width: 100%; height: 400px;">
+            <canvas id="postureTimelineChart"></canvas>
+        </div>
+        
+
+    <script>
+        // Chart 實例變數
+        let postureTimelineChart;
+
+        const postureHistory = {};     // ✅ 每個 MAC 一份資料
+        const lastTimestamps = {};     // ✅ 每個 MAC 一份時間點
+
+        // 定義每個姿態狀態的顏色 (1-8) 和文字描述
+        // 注意: 這裡的姿態文字與您的第一個問題中提供的有些不同，我沿用了您現在代碼中的定義。
+        // 如果需要，請根據實際的姿態狀態定義進行調整。
+        const postureColors = {
+            '1': '#4CAF50', // 綠色 (坐姿 - 根據 postureText 調整)
+            '2': '#2196F3', // 藍色 (站立 - 根據 postureText 調整)
+            '3': '#FFC107', // 琥珀色 (躺臥)
+            '4': '#FF9800', // 橘色 (右躺)
+            '5': '#F44336', // 紅色 (跌倒)
+            '6': '#9C27B0', // 紫色 (趴臥)
+            '7': '#795548', // 棕色 (左躺)
+            '8': '#607D8B', // 藍灰色 (走路)
+        };
+
+        const postureText = {
+            '1': '坐姿',
+            '2': '站立',
+            '3': '躺臥',
+            '4': '右躺',
+            '5': '跌倒',
+            '6': '趴臥',
+            '7': '左躺',
+            '8': '走路',
+        };
+
+        let activeMacTabs = [];      // 已建立的分頁裝置 MAC
+        let currentActiveMac = null; // 目前顯示的裝置
+
+
+        // ---- 狀態儲存工具 ----
+        function saveTabsState() {
+        localStorage.setItem('activeMacTabs', JSON.stringify(activeMacTabs));
+        localStorage.setItem('currentActiveMac', currentActiveMac ?? '');
+        }
+
+        function loadTabsState() {
+        try {
+            const tabs = JSON.parse(localStorage.getItem('activeMacTabs') || '[]');
+            const current = localStorage.getItem('currentActiveMac') || null;
+            if (Array.isArray(tabs)) activeMacTabs = tabs;
+            currentActiveMac = current || (activeMacTabs[0] ?? null);
+        } catch {}
+        }
+
+
+        // 偵測所有 Mac
+        function MacSelector() {
+            fetch('/api/mac_list') // 後端回傳所有 MAC 的 API
+                .then(response => response.json())
+                .then(macList => {
+                    const selector = document.getElementById('macSelector');
+                    selector.innerHTML = ''; // 清空原有選項
+
+                    if (!Array.isArray(macList) || macList.length === 0) {
+                        selector.innerHTML = '<option disabled>無裝置可選擇</option>';
+                        return;
+                    }
+
+                    // 動態新增選項
+                    macList.forEach((mac, index) => {
+                        const option = document.createElement('option');
+                        option.value = mac;
+                        option.textContent = `裝置 ${index + 1} - ${mac}`;
+                        selector.appendChild(option);
+                    });
+
+                    // 如果本來就有選取，沿用；否則選第一個但不要清狀態
+                    if (currentActiveMac && macList.includes(currentActiveMac)) {
+                        selector.value = currentActiveMac;
+                    } else {
+                        currentActiveMac = macList[0];
+                        saveTabsState();
+                    }
+                    })
+                    
+                .catch(error => {
+                    console.error('取得 MAC 清單失敗:', error);
+                    const selector = document.getElementById('macSelector');
+                    selector.innerHTML = '<option disabled>載入失敗</option>';
+                });
+        }
+
+        //  載入所有 MAC 裝置進選單
+        async function MacListDropdown() {
+            try {
+                const res = await fetch('/api/mac_list');
+                const macList = await res.json();
+
+                const dropdown = document.getElementById('macSelector');
+                dropdown.innerHTML = ''; // 清空
+
+                macList.forEach(mac => {
+                    const option = document.createElement('option');
+                    option.value = mac;
+                    option.textContent = mac;
+                    dropdown.appendChild(option);
+                });
+            } catch (err) {
+                console.error('無法載入 MAC 清單:', err);
+            }
+        }
+        
+        // Tab 樣式切換
+        function updateTabStyle() {
+            document.querySelectorAll('#macTabs .mac-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.mac === currentActiveMac);
+            });
+        }
+
+        // 新增 Mac 裝置分頁
+        function addSelectedMacTab() {
+            const dropdown = document.getElementById('macSelector');
+            const selectedMac = dropdown.value;
+
+            if (!(selectedMac in postureHistory)) {
+                postureHistory[selectedMac] = [];    // 初始化姿態歷史
+                lastTimestamps[currentActiveMac] = null;    // 初始化時間
+            }
+
+
+            if (activeMacTabs.includes(selectedMac)) {
+                alert('這個裝置已加入！');
+                return;
+            }
+
+            activeMacTabs.push(selectedMac);
+            currentActiveMac = selectedMac;
+            saveTabsState(); // <<<<<<<<<< 新增：存檔
+
+            const tab = document.createElement('button');
+            tab.textContent = `裝置 - ${selectedMac}`;
+            tab.className = 'mac-tab';
+            tab.dataset.mac = selectedMac;
+
+            // 左鍵切換
+            tab.onclick = () => {
+                currentActiveMac = selectedMac;
+                // 取得對應裝置的歷史與時間（如果不存在就初始化）
+                postureHistory[currentActiveMac] ||= [];
+                lastTimestamps[currentActiveMac] ||= null;
+                saveTabsState(); 
+                updateData();
+                updatePostureChart();
+                updateTabStyle();
+            };
+
+            // 右鍵點擊：彈出刪除確認
+            tab.oncontextmenu = (e) => {
+                e.preventDefault();
+                showContextMenu(e.pageX, e.pageY, selectedMac, tab);
+            };
+
+            document.getElementById('macTabs').appendChild(tab);
+
+            // 第一次新增就自動顯示
+            updateData();
+            updatePostureChart();
+            updateTabStyle();
+        }
+
+        
+        function showContextMenu(x, y, mac, tabElement) {
+            const menu = document.getElementById('contextMenu');
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+
+            // 先清除舊事件
+            const newMenu = menu.cloneNode(true);
+            menu.parentNode.replaceChild(newMenu, menu);
+
+            // 加入刪除邏輯
+            newMenu.onclick = () => {
+                activeMacTabs = activeMacTabs.filter(m => m !== mac);
+
+                if (currentActiveMac === mac) {
+                    currentActiveMac = activeMacTabs[0] || null;
+                }
+                saveTabsState();
+
+                tabElement.remove();
+                updateData();
+                updatePostureChart();
+                updateTabStyle();
+                newMenu.style.display = 'none';
+            };
+        }
+
+
+        // 初始化圖表
+        function PostureTimelineChart() {
+            const ctx = document.getElementById('postureTimelineChart').getContext('2d');
+            postureTimelineChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    datasets: [{
+                        label: "姿態",
+                        data: [],
+                        backgroundColor: [],
+                        borderSkipped: false
+                    }]
+                },
+                    options: {
+                        indexAxis: 'y', // 使條形圖水平顯示
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'second', // 預設單位，實際顯示會由 updatePostureChart 決定
+                                    tooltipFormat: 'HH:mm:ss',
+                                    displayFormats: {
+                                        second: 'HH:mm:ss',
+                                        minute: 'HH:mm',
+                                        hour: 'HH:mm'
+                                    }
+                                },
+                            title: { display: true, text: '時間' },
+                            grid: {color: '#cccccc'}
+                        },
+                        y:  { 
+                            type: 'category',
+                            labels: ["坐姿", "站立", "躺臥", "右躺", "左躺", "趴臥", "走路", "跌倒"],
+                            offset: true, 
+                            grid: {
+                            color: '#cccccc',
+                            drawTicks: false,       // ✅ 不畫多餘刻度
+                            },
+                            ticks: {
+                                align: 'center',   // ✅ 文字與 bar 對齊在中間
+                                crossAlign: 'center'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                title: ctx => {
+                                    const data = ctx[0].raw; 
+                                    const start = luxon.DateTime.fromMillis(data.x[0]).toFormat('HH:mm:ss');
+                                    const end = luxon.DateTime.fromMillis(data.x[1]).toFormat('HH:mm:ss');
+                                    return `${start} - ${end}`;
+                                },
+                                label: function (context) {
+                                    const data = context.raw;
+                                    if (data && typeof data.duration === 'number') {
+                                        let totalSeconds = Math.round(data.duration);
+
+                                        const hours = Math.floor(totalSeconds / 3600);
+                                        totalSeconds %= 3600;
+                                        const minutes = Math.floor(totalSeconds / 60);
+                                        const seconds = totalSeconds % 60;
+
+                                        let result = '動作時間：';
+                                        if (hours > 0) result += `${hours} 小時 `;
+                                        if (minutes > 0) result += `${minutes} 分 `;
+                                        if (seconds > 0 || (hours === 0 && minutes === 0)) result += `${seconds} 秒`;
+
+                                        return result.trim();
+                                    }
+
+                                    return '動作時間：--';
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true, 
+                            position: 'bottom',
+                            labels: {
+                                generateLabels: chart => {
+                                        return Object.keys(postureText).map(stateKey => ({
+                                            text: postureText[stateKey] ,
+                                            fillStyle: postureColors[stateKey] ,
+                                            strokeStyle: postureColors[stateKey] ,
+                                            pointStyle: 'rect'
+                                        }));
+                                }
+                            }
+                        }
+                    },
+                    animation: false
+                }
+            });
+        }
+        
+        let latestDataBuffer = [];
+        
+
+        function Mac_device() {
+            return currentActiveMac;
+        }
+
+        
+        //數據處理
+        function updateData() {
+            fetch('/api/latest_data') // 從 Flask 後端獲取數據
+                .then(response => response.json())
+                .then(data => {
+                    const filteredData = data.filter(item => item.safe_Mac === Mac_device());
+
+                    const dataTable = document.querySelector('#dataDisplay tbody');
+                    dataTable.innerHTML = '';  
+
+                    const physiologicalTable = document.querySelector('#environmentDataDisplay tbody');
+                    physiologicalTable.innerHTML = '';
+
+                    document.getElementById('lastUpdateTime').textContent = luxon.DateTime.now().toFormat('HH:mm:ss');
+
+                    if (filteredData.length > 0) {
+                        const latest = filteredData[filteredData.length - 1]; // 取得最新一筆資料
+
+                        // 更新電量、熱量、步數、里程
+                        document.getElementById('safe_battery').textContent = `電量：${latest.safe_battery ?? '--'}%`;
+                        document.getElementById('Calories').textContent = latest.Calories ?? '--';
+                        document.getElementById('Step').textContent = latest.Step ?? '--';
+                        document.getElementById('Mileage').textContent = (typeof latest.Mileage === 'number' ? latest.Mileage.toFixed(2) : '--');
+
+                        // ✅ 只取前 10 筆
+                        const maxRows = 10;
+                        const latestData = filteredData.slice(0 ,maxRows);
+
+                    latestData.forEach(item => {
+
+                        // 在表格中顯示最新的 IMU 數據
+                        // 表格 1: 最新數據
+                        const row = dataTable.insertRow();
+                        row.insertCell().textContent = item.timestamp;
+                        row.insertCell().textContent = item.safe_Mac ?? '';
+                        row.insertCell().textContent = postureText[String(item.Posture_state)] || postureText['unknown'];
+                        row.insertCell().textContent = (typeof item.roll16 === 'number' ? item.roll16.toFixed(2) : '');
+                        row.insertCell().textContent = (typeof item.pitch16 === 'number' ? item.pitch16.toFixed(2) : '');
+                        row.insertCell().textContent = (typeof item.yaw16 === 'number' ? item.yaw16.toFixed(2) : '');
+
+                        // 表格 2: 生理數據
+                        const environmentRow = physiologicalTable.insertRow(); 
+                        environmentRow.insertCell().textContent = item.timestamp;
+                        environmentRow.insertCell().textContent = (typeof item.HR === 'number' ? item.HR.toFixed(2) : '');
+                        environmentRow.insertCell().textContent = (typeof item.Bloodpressure_SBP === 'number' && typeof item.Bloodpressure_DBP === 'number') ? `${Math.round(item.Bloodpressure_SBP)} / ${Math.round(item.Bloodpressure_DBP)}` : '';
+                        environmentRow.insertCell().textContent = (typeof item.Blood_oxygen === 'number' ? item.Blood_oxygen.toFixed(2) : '');
+                       
+                        //溫度數據
+                        let temperatureValue = item.Temperature;
+                        if (typeof temperatureValue === 'string') {
+                            const parsed = parseFloat(temperatureValue);
+                            temperatureValue = Number.isFinite(parsed) ? parsed : null;
+                        }
+                        environmentRow.insertCell().textContent = (typeof temperatureValue === 'number' && !isNaN(temperatureValue)) ? `${temperatureValue.toFixed(1)}°C` : '';
+
+                    });
+                }
+
+            })
+                .catch(error => {
+                    console.error('獲取數據失敗:', error);
+                });
+        }
+
+
+        function normalizeTimestamp(ts) {
+            ts = Number(ts);
+            if (ts < 1e12) { // 10位數 → 秒
+                return ts * 1000;
+            }
+            return ts; // 已經是毫秒
+        }
+
+
+        // 姿態圖表
+        async function updatePostureChart() {
+            try {
+                const timeWindowSeconds = Number(document.getElementById('timeWindowSelector').value); 
+                const currentTime = luxon.DateTime.now();
+                const minTime = currentTime.minus({ seconds: timeWindowSeconds });
+                const minMs = minTime.toMillis();
+
+                // 帶上目前選到的 MAC
+                const minutes = Math.ceil(timeWindowSeconds / 60); // 🔹 新增：動態 minutes
+                const mac = Mac_device();
+                const url = `/api/history_posechart?minutes=${minutes}&mac=${encodeURIComponent(mac)}`;
+
+                const response = await fetch(url);
+                const postureChange = await response.json(); // ✅ 只讀一次
+                console.log("原始 API 回傳:", postureChange);
+
+                // 檢查資料型態與長度
+                if (!Array.isArray(postureChange) || postureChange.length === 0) {
+                    console.warn("⚠ 沒有資料");
+                    return;
+                }
+
+                // 過濾 MAC
+                let postureChanges = mac 
+                    ? postureChange.filter(s => s.safe_Mac === mac)
+                    : postureChange; // 🔹 原本是 postureChangesRaw（這裡原本會報錯，修正為 postureChange）
+
+                if (postureChanges.length === 0) {
+                    console.warn("⚠ 指定 MAC 無資料");
+                    return;
+                }
+
+                // 時間單位修正 (確保是毫秒)
+                postureChanges = postureChanges.filter(s => {
+                    let startMs = normalizeTimestamp(s.startTime); // 🔹 用標準化函式
+                    let endMs = normalizeTimestamp(s.endTime ?? s.startTime);
+
+                    return endMs >= minMs;
+                });
+
+                if (postureChanges.length === 0) {
+                    console.warn("⚠ 過濾後沒資料，改用全部資料");
+                    postureChanges = postureChange.map(s => ({
+                        ...s,
+                        startTime: normalizeTimestamp(s.startTime), // 🔹 避免 fallback 時還是秒
+                        endTime: normalizeTimestamp(s.endTime ?? s.startTime)
+                    }));
+                }
+
+                let last = null;
+                const history = postureHistory[currentActiveMac] ||= [];
+                history.length = 0;
+
+                postureChanges.forEach(seg => {
+                    const state = String(seg.state);
+                    const startMs = normalizeTimestamp(seg.startTime); // 🔹 確保是毫秒
+                    const endMs   = normalizeTimestamp(seg.endTime ?? seg.startTime);
+                    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
+
+                    const MAX_GAP = 3 * 60 * 1000; // 3 分鐘
+                    if (last && last.state === state && startMs - last.endTime <= MAX_GAP) {
+                        last.endTime = Math.max(last.endTime, endMs);
+                    } else {
+                        last = { state, startTime: startMs, endTime: endMs };
+                        history.push(last);
+                    }
+                });
+
+                // 建立 dataset
+                const dataset = {
+                    label: "姿態",
+                    backgroundColor: [],
+                    data: [],
+                    borderSkipped: false,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8,
+                    barThickness: 30,
+                    parsing: { xAxisKey: "x", yAxisKey: "y" },
+                };
+
+                history.forEach(segment => {
+                    const label = postureText[segment.state] || "未知";
+                    const color = postureColors[segment.state] || postureColors["unknown"];
+                    dataset.data.push({ 
+                        x: [segment.startTime, segment.endTime], 
+                        y: label ,
+                        duration: (segment.endTime - segment.startTime) / 1000  // 單位：秒
+                    });
+                    dataset.backgroundColor.push(color);
+                });
+
+                postureTimelineChart.data.datasets[0] = dataset;
+
+                // 設定時間刻度
+                let unit, stepSizeValue, timeFormat;
+                if (timeWindowSeconds <= 60) {
+                    unit = 'second'; stepSizeValue = 10; timeFormat = 'HH:mm:ss';
+                } else if (timeWindowSeconds <= 600) {
+                    unit = 'minute'; stepSizeValue = 1; timeFormat = 'HH:mm';
+                } else if (timeWindowSeconds <= 3600) {
+                    unit = 'minute'; stepSizeValue = 5; timeFormat = 'HH:mm';
+                } else {
+                    unit = 'hour'; stepSizeValue = 1; timeFormat = 'HH:mm';
+                }
+
+                postureTimelineChart.options.scales.x = {
+                    type: 'time',
+                    time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
+                    min: minMs,
+                    max: currentTime.toMillis(),
+                    grid: { display: true, color: '#cccccc', lineWidth: 1, drawTicks: true, drawBorder: false, drawOnChartArea: true },
+                    ticks: {
+                        autoSkip: true,
+                        stepSize: stepSizeValue,
+                        callback: value => luxon.DateTime.fromMillis(value).toFormat(timeFormat)
+                    },
+                };
+
+                postureTimelineChart.update();
+
+            } catch (error) {
+                console.error("抓取 API 失敗:", error);
+            }
+        }
+
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            PostureTimelineChart(); // 初始化圖表結構
+
+            loadTabsState(); // <<<<<< 先讀本機狀態
+
+            // 依照儲存的 tabs 重建 UI
+            const tabsWrap = document.getElementById('macTabs');
+            activeMacTabs.forEach(mac => {
+                const tab = document.createElement('button');
+                tab.textContent = `裝置 - ${mac}`;
+                tab.className = 'mac-tab';
+                tab.dataset.mac = mac;
+                tab.onclick = () => {
+                    currentActiveMac = mac;
+                    saveTabsState(); // <<<<<< 存檔
+                    postureHistory[mac] ||= [];
+                    lastTimestamps[mac] = lastTimestamps[mac] ?? null;
+                    updateData();
+                    updatePostureChart();
+                    updateTabStyle();
+                };
+                tab.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    showContextMenu(e.pageX, e.pageY, mac, tab);
+                };
+                tabsWrap.appendChild(tab);
+            });
+            updateTabStyle(); // 更新分頁樣式（確保 active 狀態正確）
+
+            MacSelector(); // 只負責更新下拉選單
+            MacListDropdown(); // ✅ 載入下拉選單的裝置清單
+
+            // 如果有已選裝置，讓下拉選單顯示它
+            const dropdown = document.getElementById('macSelector');
+            const setDropdownToActive = () => {
+                if (currentActiveMac && [...dropdown.options].some(o => o.value === currentActiveMac)) {
+                    dropdown.value = currentActiveMac;
+                }
+            };
+            // MacListDropdown() 是非同步，延遲執行以確保選單已載入
+            setTimeout(setDropdownToActive, 300);
+
+            setInterval(updateData, 1000); // 設定每 1 秒更新數據的間隔
+            setInterval(updatePostureChart, 1000); // 設定每 1 秒更新圖表的間隔
+
+            // 當時間區間選單改變時更新圖表
+            document.getElementById('timeWindowSelector').addEventListener('change', updatePostureChart);
+
+            // ✅ 當使用者選擇不同 MAC 裝置時，清空歷史並更新資料
+            document.getElementById('macSelector').addEventListener('change', () => {
+                currentActiveMac = document.getElementById('macSelector').value;
+                saveTabsState(); // <<<<<< 存檔
+                updateData();
+                updatePostureChart();
+                updateTabStyle();
+            });
+
+            // 點擊其他地方隱藏右鍵選單
+            document.addEventListener('click', () => {
+                document.getElementById('contextMenu').style.display = 'none';
+            });
+
+            // 讀取使用者選擇的主題顏色
+            const bgColor = localStorage.getItem("themeBgColor");
+            const textColor = localStorage.getItem("themeTextColor");
+
+            if (bgColor) {
+                document.documentElement.style.setProperty("--theme-bg", bgColor);
+                document.documentElement.style.setProperty("--theme-tab-bg", bgColor);
+            }
+            if (textColor) {
+                document.documentElement.style.setProperty("--theme-text", textColor);
+            }
+        });
+
+
+    </script>
+
+    <div id="contextMenu" class="custom-context-menu">刪除裝置</div>
+
+</body>
+</html> 

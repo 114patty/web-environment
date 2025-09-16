@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <link rel="stylesheet" href="/static/css/theme.css"> 
+    <script src="/static/js/theme.js" defer></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歷史資料</title>
+<style>
+    :root {
+            --theme-bg: #f6f3e8; /* 主背景 */
+            --theme-text: #333333; /* 文字 */
+            --theme-tab-bg: #f6f3e8; /* 分頁背景 */
+            --theme-tab-active-bg: #ffffff; /* 選中分頁背景 */
+            --theme-container-bg: #ffffff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ;   /* 主容器背景（如框框） */
+            --theme-section: #fff9e9;  /* 區塊或表格內部的底色 */
+            --theme-table-header-bg: #fbf9f3;
+            --theme-border: #b0a99f;
+    }
+    body {
+        font-family: Arial, sans-serif;
+        background-color: var(--theme-bg);
+        color:  var(--theme-text);
+        margin: 20px;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: auto;
+        background: var(--theme-container-bg);
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+        text-align: center;
+        color: var(--theme-heading);
+        margin-bottom: 20px;
+    }
+    .header-title {
+    position: relative;  /* 讓 .battery-display 的 absolute 參考這個容器 */
+    text-align: center;
+    }
+    .data-section {
+        background-color: var(--theme-section);
+    }
+    .tab {
+        background-color: var(--theme-tab-bg);
+    }
+        /* 側邊欄樣式 */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: -200px; /* 預設隱藏 */
+            width: 200px;
+            height: 100%;
+            background-color: #f4f4f4;
+            border-right: 1px solid #ccc;
+            padding-top: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: left 0.3s ease;
+            z-index: 2000;
+        }
+
+        #sidebar h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #sidebar a {
+            display: block;
+            padding: 12px;
+            text-decoration: none;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+            transition: background-color 0.3s;
+        }
+
+        #sidebar a:hover {
+            background-color: #ddd;
+        }
+         /* 主內容 */
+        #main-content {
+            transition: margin-left 0.3s ease;
+            padding: 20px;
+        }
+
+        /* 側邊欄按鈕 */
+        #sidebar-btn {
+            position: fixed;
+            top: 40px;
+            left: 0;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            transition: left 0.3s ease;
+            z-index: 2100;
+        }
+
+        /* hover 時展開側邊欄並推動主內容 */
+        #sidebar-btn:hover + #sidebar,
+        #sidebar:hover {
+            left: 0;
+        }
+  
+</style>
+</head>
+<body>
+    <div id="sidebar-container"></div>
+    <script src="/static/js/sidebar.js"></script>
+
+
+    <div class="container">
+        <div class="header-title">
+            <h1 style="margin:0;">歷史資料</h1>
+        </div>
+
+</div>
+
+<script>
+  
+
+  
+    // 讀取使用者選擇的主題顏色
+    const bgColor = localStorage.getItem("themeBgColor");
+    const textColor = localStorage.getItem("themeTextColor");
+
+    if (bgColor) {
+        document.documentElement.style.setProperty("--theme-bg", bgColor);
+        document.documentElement.style.setProperty("--theme-tab-bg", bgColor);
+    }
+    if (textColor) {
+        document.documentElement.style.setProperty("--theme-text", textColor);
+    }
+
+
+</script>
+</body>
+</html>

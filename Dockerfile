@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 7860
 
 # 啟動 Flask
-CMD ["python", "app.py"]
+CMD ["python", "web_app.py"]

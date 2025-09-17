@@ -259,9 +259,9 @@ def get_latest_data():
             # 將 ObjectId 轉換為字串，因為 ObjectId 無法直接 JSON 序列化
             for doc in latest_readings:
                 doc['_id'] = str(doc['_id'])
-                if isinstance(doc.get('timestamp'), datetime.datetime):
-                    local_ts = doc['timestamp'].astimezone(tz)
-                    doc['timestamp'] = local_ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
+                # if isinstance(doc.get('timestamp'), datetime.datetime):
+                #     local_ts = doc['timestamp'].astimezone(tz)
+                #     doc['timestamp'] = local_ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
             return jsonify(latest_readings)
         except Exception as e:
             print(f"從 MongoDB 獲取數據失敗: {e}")
@@ -318,8 +318,8 @@ def history_data():
                                      .limit(limit))
             for doc in cursor:
                 doc['_id'] = str(doc['_id'])
-                if isinstance(doc.get('timestamp'), datetime.datetime):
-                    doc['timestamp'] = doc['timestamp'].isoformat() + "Z"
+                # if isinstance(doc.get('timestamp'), datetime.datetime):
+                #     doc['timestamp'] = doc['timestamp'].isoformat() + "Z"
                 data.append(doc)
 
             return jsonify(data)

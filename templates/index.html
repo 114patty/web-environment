@@ -564,7 +564,7 @@
                                 type: 'time',
                                 time: {
                                     unit: 'second', // 預設單位，實際顯示會由 updatePostureChart 決定
-                                    tooltipFormat: 'yyy-MM-dd HH:mm:ss',
+                                    tooltipFormat: 'yyyy-MM-dd HH:mm:ss',
                                     displayFormats: {
                                         second: 'HH:mm:ss',
                                         minute: 'HH:mm',
@@ -1048,6 +1048,9 @@
                 postureTimelineChart.options.scales.x = {
                     type: 'time',
                     time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
+                    adapters: {
+                        date: { zone: 'utc' }   // ✅ 不要再轉換時區
+                    },
                     min: minMs,
                     max: currentTime.toMillis(),
                     grid: { display: true, color: '#cccccc', lineWidth: 1, drawTicks: true, drawBorder: false, drawOnChartArea: true },

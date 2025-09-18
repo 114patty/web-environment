@@ -564,13 +564,18 @@
                                 type: 'time',
                                 time: {
                                     unit: 'second', // 預設單位，實際顯示會由 updatePostureChart 決定
-                                    tooltipFormat: 'HH:mm:ss',
+                                    tooltipFormat: 'yyy-MM-dd HH:mm:ss',
                                     displayFormats: {
                                         second: 'HH:mm:ss',
                                         minute: 'HH:mm',
                                         hour: 'HH:mm'
                                     }
                                 },
+                            adapters: {
+                                date: {
+                                    zone: 'utc'   // ✅ 把資料當成 UTC，不要再轉換時區
+                                }
+                            },
                             title: { display: true, text: '時間' },
                             grid: {color: '#cccccc'}
                         },

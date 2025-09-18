@@ -737,16 +737,28 @@
         //     }
         //     return ts; // 已經是毫秒
         // }
+
+        // function normalizeTimestamp(ts) {
+        //     if (!ts) return null;
+        //     if (typeof ts === 'string') {
+        //         ts = Date.parse(ts);  // 字串轉毫秒
+        //     }
+        //     ts = Number(ts);
+        //     if (!Number.isFinite(ts)) return null;
+        //     if (ts < 1e12) return ts * 1000; // 秒轉毫秒
+        //     return ts;
+        // }
+
         function normalizeTimestamp(ts) {
             if (!ts) return null;
-            if (typeof ts === 'string') {
-                ts = Date.parse(ts);  // 字串轉毫秒
+            if (typeof ts === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(ts)) {
+                // 🔹 如果只是 HH:mm:ss，補上今天的日期再 parse
+                const today = luxon.DateTime.now().toFormat('yyyy-MM-dd');
+                ts = `${today}T${ts}`;
             }
-            ts = Number(ts);
-            if (!Number.isFinite(ts)) return null;
-            if (ts < 1e12) return ts * 1000; // 秒轉毫秒
-            return ts;
+            return Date.parse(ts);
         }
+
 
 
         // let chartUpdatePausedUntil = 0;

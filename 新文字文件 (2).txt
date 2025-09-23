@@ -1,29 +1,34 @@
-[Unit]
-Description=Cloudflare Quick Tunnel
-After=network.target
+PYTHON_PATH=$(which python3)
+APP_PATH=$(find /opt/web-app -name "web_app.py" | head -n 1)
 
-[Service]
-ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:5050
-Restart=always
-User=utl
-WorkingDirectory=/home/utl
-StandardOutput=journal
-StandardError=journal
+if [ -z "$APP_PATH" ]; then
+  echo "❌ 找不到 web_app.py，請確認放在 /opt/web-app/"
+  exit 1
+fi
 
-[Install]
-WantedBy=multi-user.target
+SERVICE_FILE=/etc/systemd/system/flask-web.service
 
-------------------------------------
-
+sudo bash -c "cat > $SERVICE_FILE" <<EOL
 [Unit]
 Description=Flask Web App
 After=network.target
 
 [Service]
-User=utl
-WorkingDirectory=/home/utl/web_app
-ExecStart=/usr/bin/python3 /home/utl/web_app/web_app.py
+User=$(whoami)
+WorkingDirectory=$(dirname $APP_PATH)
+ExecStart=$PYTHON_PATH $APP_PATH
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
+EOL
+
+echo "✅ 已建立 $SERVICE_FILE"
+echo "Python 路徑: $PYTHON_PATH"
+echo "Flask 程式: $APP_PATH"
+
+# 套用新設定
+sudo systemctl daemon-reload
+sudo systemctl enable flask-web
+sudo systemctl restart flask-web
+sudo systemctl status flask-web --no-pager -l

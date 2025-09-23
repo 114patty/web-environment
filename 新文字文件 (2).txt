@@ -12,3 +12,18 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+
+------------------------------------
+
+[Unit]
+Description=Flask Web App
+After=network.target
+
+[Service]
+User=utl
+WorkingDirectory=/home/utl/web_app
+ExecStart=/usr/bin/python3 /home/utl/web_app/web_app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

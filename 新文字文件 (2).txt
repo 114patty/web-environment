@@ -1,9 +1,14 @@
-# 加入 Cloudflare 的套件來源
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared focal main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+[Unit]
+Description=Cloudflare Quick Tunnel
+After=network.target
 
-# 更新套件清單
-sudo apt update
+[Service]
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:5050
+Restart=always
+User=utl
+WorkingDirectory=/home/utl
+StandardOutput=journal
+StandardError=journal
 
-# 安裝 cloudflared
-sudo apt install cloudflared -y
+[Install]
+WantedBy=multi-user.target

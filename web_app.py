@@ -9,6 +9,7 @@ from dateutil import parser as dtparser  # pip install python-dateutil
 from werkzeug.middleware.proxy_fix import ProxyFix
 from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
+from pymongo import ASCENDING
 
 
 # 壓縮資料
@@ -168,6 +169,13 @@ mongo_data = db["posture_data"]
 
 # 壓縮後段落資料 (新 collection)
 mongo_segments = db["posture_segments"]
+
+# 啟動時建立索引（如果已存在不會重複建立）
+mongo_data.create_index([("mac", ASCENDING), ("timestamp", ASCENDING)])
+# 啟動時建立索引（如果已存在不會重複建立）
+mongo_data.create_index([("safe_Mac", ASCENDING), ("timestamp", ASCENDING)])
+mongo_segments.create_index([("safe_Mac", ASCENDING), ("startTime", ASCENDING)])
+
 
 # mongo_client = None
 # mongo_collection = None
@@ -671,8 +679,9 @@ def all_history_posechart():
         seg_docs = list(seg_cursor)
 
         # === 2. 查今天的 raw 資料 ===
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        raw_query = {"timestamp": {"$gte": today_start}}
+        # today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # raw_query = {"timestamp": {"$gte": today_start}}
+        raw_query = {"timestamp": {"$gte": now - datetime.timedelta(minutes=10)}}
         if mac:
             raw_query["safe_Mac"] = mac
         elif macs:
@@ -770,4 +779,4 @@ if __name__ == '__main__':
     
     # 設置 Flask 在所有可用介面監聽 (0.0.0.0)，這樣其他裝置也能透過 IP 訪問
     # 在開發環境中，debug=True 會自動重載程式碼並提供詳細錯誤訊息
-    app.run(host='0.0.0.0', port=7860, debug=True)
+    app.run(host='0.0.0.0', port=5050, debug=True)

@@ -564,15 +564,15 @@
                                 type: 'time',
                                 time: {
                                     unit: 'second', // 預設單位，實際顯示會由 updatePostureChart 決定
-                                    tooltipFormat: 'yyyy-MM-dd HH:mm:ss',
+                                    tooltipFormat: 'yyyy-MM/dd HH:mm:ss',
                                     displayFormats: {
                                         second: 'HH:mm:ss',
                                         minute: 'HH:mm',
                                         hour: 'HH:mm'
                                     }
                                 },
-                                title: { display: true, text: '時間' },
-                                grid: {color: '#cccccc'}
+                            title: { display: true, text: '時間' },
+                            grid: {color: '#cccccc'}
                         },
                         y:  { 
                             type: 'category',
@@ -731,14 +731,6 @@
 
         // 姿態時間單位換算
         // function normalizeTimestamp(ts) {
-        //     ts = Number(ts);
-        //     if (ts < 1e12) { // 10位數 → 秒
-        //         return ts * 1000;
-        //     }
-        //     return ts; // 已經是毫秒
-        // }
-
-        // function normalizeTimestamp(ts) {
         //     if (!ts) return null;
         //     if (typeof ts === 'string') {
         //         ts = Date.parse(ts);  // 字串轉毫秒
@@ -751,269 +743,183 @@
 
         function normalizeTimestamp(ts) {
             if (!ts) return null;
-            if (typeof ts === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(ts)) {
-                // 🔹 如果只是 HH:mm:ss，補上今天的日期再 parse
-                const today = luxon.DateTime.now().toFormat('yyyy-MM-dd');
-                ts = `${today}T${ts}`;
+
+            // 如果是字串，先判斷是不是日期格式
+            if (typeof ts === 'string') {
+                const parsed = Date.parse(ts);
+                if (!isNaN(parsed)) {
+                    console.log("⏱️ normalizeTimestamp: 字串日期 →", ts, "→", parsed);
+                    return parsed; // 已經是毫秒
+                }
+                ts = Number(ts);
+            } else {
+                ts = Number(ts);
             }
-            return Date.parse(ts);
+
+            if (!Number.isFinite(ts)) return null;
+
+            // 🔍 判斷單位：小於 1e12 的是秒，大於等於的就是毫秒
+            if (ts < 1e12) {
+                // console.log("⏱️ normalizeTimestamp: 秒轉毫秒 →", ts, "→", ts * 1000);
+                return ts * 1000;
+            } else {
+                // console.log("⏱️ normalizeTimestamp: 已是毫秒 →", ts);
+                return ts;
+            }
+        }
+
+        // 全域快取：每個 MAC 一份
+        const postureCache = {};    // 記憶體內快取
+        const fetchedMacs = new Set();
+
+        // 儲存快取到 localStorage
+        function saveCacheToLocal() {
+            localStorage.setItem("postureCache", JSON.stringify(postureCache));
+        }
+
+        // 從 localStorage 載入快取
+        function loadCacheFromLocal() {
+            try {
+                const cache = JSON.parse(localStorage.getItem("postureCache") || "{}");
+                for (const mac in cache) {
+                    postureCache[mac] = cache[mac];
+                }
+            } catch (e) {
+                console.warn("⚠ 無法載入快取:", e);
+            }
+        }
+
+        async function fetchPostureData(mac) {
+            if (!mac) return { oneHour: [], fullDay: [] };
+
+            // 如果記憶體或 localStorage 已有 → 直接用
+            if (postureCache[mac]) {
+                console.log(`⚡ 使用快取 (${mac})`, postureCache[mac]);
+                return postureCache[mac];
+            }
+
+            // 第一次 → 先抓 1 小時
+            console.log(`📡 抓 ${mac} 最近 1 小時資料`);
+            const url = `/api/all_history_posechart?hours=1&mac=${encodeURIComponent(mac)}`;
+            const res = await fetch(url);
+            const oneHourData = await res.json();
+
+            // ✅ log 一下回傳內容
+            console.log("📡 [API回傳] 1小時：", oneHourData);
+
+            postureCache[mac] = {
+                oneHour: Array.isArray(oneHourData) ? oneHourData : [],
+                fullDay: []
+            };
+            saveCacheToLocal();
+            console.log(`✅ [API] ${mac} 1 小時資料載入完成，筆數：`, postureCache[mac].oneHour.length);
+
+            // 背景再抓 24 小時（只做一次）
+            if (!fetchedMacs.has(mac)) {
+                fetchedMacs.add(mac);
+                setTimeout(async () => {
+                    try {
+                        console.log(`⏳ 背景抓取 ${mac} 的完整 24 小時資料`);
+                        const fullUrl = `/api/all_history_posechart?hours=24&mac=${encodeURIComponent(mac)}`;
+                        const resFull = await fetch(fullUrl);
+                        const fullData = await resFull.json();
+
+                        // ✅ log 一下回傳內容
+                        console.log("📡 [API回傳] 24小時：", fullData);
+
+                        // 🛠️ 確保物件存在再設定
+                        if (!postureCache[mac]) {
+                            postureCache[mac] = { oneHour: [], fullDay: [] };
+                        }
+
+                        postureCache[mac].fullDay = Array.isArray(fullData) ? fullData : [];
+                        saveCacheToLocal();
+                        console.log(`✅ [API] ${mac} 24 小時資料快取完成，筆數：`, postureCache[mac].fullDay.length);
+                        
+                        // 🟢 抓完 24 小時資料後，通知刷新圖表
+                        if (currentActiveMac === mac) {
+                            updatePostureChart();
+                        }
+                    } catch (err) {
+                        console.error("❌ 背景抓取 24 小時資料失敗:", err);
+                    }
+                }, 2000); // 延遲 2 秒後再抓
+            }
+
+            return postureCache[mac];
         }
 
 
 
-        // let chartUpdatePausedUntil = 0;
-
-
-        // // 姿態圖表
-        // async function updatePostureChart() {
-        //     try {
-        //         const timeWindowSeconds = Number(document.getElementById('timeWindowSelector').value); 
-        //         const currentTime = luxon.DateTime.now();
-        //         const minTime = currentTime.minus({ seconds: timeWindowSeconds });
-        //         const minMs = minTime.toMillis();
-
-        //         // 帶上目前選到的 MAC
-        //         const minutes = Math.ceil(timeWindowSeconds / 60); // 🔹 新增：動態 minutes
-        //         const mac = Mac_device();
-        //         let postureChange;
-
-        //         //if (postureCache[mac]) {
-        //         //    postureChange = postureCache[mac];
-        //         //    console.log("✅ 使用快取資料：", postureChange.length);
-        //         //} else {
-        //             // const url = `/api/history_posechart?minutes=${minutes}&mac=${encodeURIComponent(mac)}`;
-        //             const url = `/api/all_history_posechart?hours=1&mac=${encodeURIComponent(mac)}`;
-        //             const response = await fetch(url);
-        //             postureChange = await response.json();
-
-        //             postureCache[mac] = postureChange;
-        //             console.log("📡 從後端抓資料：", postureChange.length);
-        //         //}
-
-        //         // 檢查資料型態與長度
-        //         if (!Array.isArray(postureChange) || postureChange.length === 0) {
-        //             console.warn("⚠ 沒有資料");
-        //             return;
-        //         }
-
-        //         // 過濾 MAC
-        //         let postureChanges = mac 
-        //             ? postureChange.filter(s => s.safe_Mac === mac)
-        //             : postureChange; // 🔹 原本是 postureChangesRaw（這裡原本會報錯，修正為 postureChange）
-
-        //         if (postureChanges.length === 0) {
-        //             console.warn("⚠ 指定 MAC 無資料");
-        //             return;
-        //         }
-
-        //         // 時間單位修正 (確保是毫秒)
-        //         postureChanges = postureChanges.filter(s => {
-        //             const startMs = normalizeTimestamp(s.startTime);
-        //             const endMs = normalizeTimestamp(s.endTime ?? s.startTime);
-
-        //             // ✅ 只要 segment 有「任何一部分」落在 [minMs, currentTime] 之間就保留
-        //             return endMs >= minMs && startMs <= currentTime.toMillis();
-        //         });
-
-        //         if (postureChanges.length === 0) {
-        //             console.warn("⚠ 過濾後沒資料，改用全部資料");
-        //             postureChanges = postureChange.map(s => ({
-        //                 ...s,
-        //                 startTime: normalizeTimestamp(s.startTime), // 🔹 避免 fallback 時還是秒
-        //                 endTime: normalizeTimestamp(s.endTime ?? s.startTime)
-        //             }));
-        //         }
-
-
-        //         const history = postureHistory[currentActiveMac] = [];
-
-        //         // 把新資料轉換成 segments
-        //         const newSegments = [];
-        //         let last = null;
-        //         postureChanges.forEach(seg => {
-        //             const state = String(seg.state);
-        //             const startMs = normalizeTimestamp(seg.startTime); // 🔹 確保是毫秒
-        //             const endMs   = normalizeTimestamp(seg.endTime ?? seg.startTime);
-        //             if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
-
-        //             const MAX_GAP = 60 * 1000; // 3 分鐘
-
-        //             if (last && last.state === state && startMs - last.endTime <= MAX_GAP) {
-        //                 // last.endTime = Math.max(last.endTime, endMs);
-        //                 last.endTime = endMs;
-        //             } else {
-        //                 last = { state, startTime: startMs, endTime: endMs };
-        //                 history.push(last);
-        //             }
-        //         });
-
-        //         // 🔹 合併新舊資料（避免重複）
-        //         newSegments.forEach(seg => {
-        //             const exists = history.find(h => 
-        //                 h.state === seg.state && 
-        //                 Math.abs(h.startTime - seg.startTime) < 1000 &&
-        //                 Math.abs(h.endTime - seg.endTime) < 1000
-        //             );
-        //             if (!exists) history.push(seg);
-        //         });
-
-        //         // 🔹 確保依時間排序
-        //         history.sort((a, b) => a.startTime - b.startTime);
-
-        //         // 建立 dataset
-        //         const dataset = {
-        //             label: "姿態",
-        //             backgroundColor: [],
-        //             data: [],
-        //             borderSkipped: false,
-        //             barPercentage: 0.6,
-        //             categoryPercentage: 0.8,
-        //             barThickness: 30,
-        //             parsing: { xAxisKey: "x", yAxisKey: "y" },
-        //         };
-
-        //         history.forEach(segment => {
-        //             const label = postureText[segment.state] || "未知";
-        //             const color = postureColors[segment.state] || 'gray';
-        //             dataset.data.push({ 
-        //                 x: [segment.startTime, segment.endTime], 
-        //                 y: label ,
-        //                 duration: (segment.endTime - segment.startTime) / 1000  // 單位：秒
-        //             });
-        //             dataset.backgroundColor.push(color);
-        //         });
-
-        //         // postureTimelineChart.data.datasets[0] = dataset;
-        //         const chartDataset = postureTimelineChart.data.datasets[0];
-        //         chartDataset.data = dataset.data;
-        //         chartDataset.backgroundColor = dataset.backgroundColor;
-
-
-        //         // 設定時間刻度
-        //         let unit, stepSizeValue, timeFormat;
-        //         if (timeWindowSeconds <= 60) {
-        //             unit = 'second'; stepSizeValue = 10; timeFormat = 'HH:mm:ss';
-        //         } else if (timeWindowSeconds <= 600) {
-        //             unit = 'minute'; stepSizeValue = 1; timeFormat = 'HH:mm';
-        //         } else if (timeWindowSeconds <= 3600) {
-        //             unit = 'minute'; stepSizeValue = 5; timeFormat = 'HH:mm';
-        //         } else {
-        //             unit = 'hour'; stepSizeValue = 1; timeFormat = 'HH:mm';
-        //         }
-
-        //         postureTimelineChart.options.scales.x = {
-        //             type: 'time',
-        //             time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
-        //             min: minMs,
-        //             max: luxon.DateTime.now().toMillis(),
-        //             grid: { display: true, color: '#cccccc', lineWidth: 1, drawTicks: true, drawBorder: false, drawOnChartArea: true },
-        //             ticks: {
-        //                 autoSkip: true,
-        //                 stepSize: stepSizeValue,
-        //                 callback: value => luxon.DateTime.fromMillis(value).toFormat(timeFormat)
-        //             },
-        //         };
-        //         postureTimelineChart.options.scales.x.min = minMs;
-        //         postureTimelineChart.options.scales.x.max = currentTime.toMillis();
-
-        //         console.log("📊 圖表時間範圍：", luxon.DateTime.fromMillis(minMs).toFormat("HH:mm:ss"), "~", luxon.DateTime.now().toFormat("HH:mm:ss"));
-        //         console.log("📊 segment 範圍：", postureChanges.map(s => ({
-        //         state: s.state,
-        //         start: luxon.DateTime.fromMillis(s.startTime).toFormat("HH:mm:ss"),
-        //         end: luxon.DateTime.fromMillis(s.endTime).toFormat("HH:mm:ss")
-        //         })));
-
-
-        //         postureTimelineChart.update('none');  // ✅ 無動畫更新
-        //         // postureTimelineChart.update();
-
-        //     } catch (error) {
-        //         console.error("抓取 API 失敗:", error);
-        //     }
-        // }
-
-        // 全域快取：每個 MAC 一份
-        const postureCache = {};    // key: MAC, value: 陣列（完整資料）
-
         // 姿態圖表
         async function updatePostureChart() {
             try {
+                const mac = Mac_device();
+                if (!mac) return;
+
                 const timeWindowSeconds = Number(document.getElementById('timeWindowSelector').value); 
                 const currentTime = luxon.DateTime.now();
-                const minTime = currentTime.minus({ seconds: timeWindowSeconds });
-                const minMs = minTime.toMillis();
+                const minMs = currentTime.minus({ seconds: timeWindowSeconds }).toMillis();
 
-                // 帶上目前選到的 MAC
-                const minutes = Math.ceil(timeWindowSeconds / 60); // 🔹 新增：動態 minutes
-                const mac = Mac_device();
-                let postureChange;
+                // 抓資料（不會重複打 API）
+                const dataSet = await fetchPostureData(mac);
 
-                // 🔹 改進：如果是 24 小時，抓 24h；否則只抓 1 小時
-                let url;
-                if (timeWindowSeconds >= 86400) {
-                    url = `/api/all_history_posechart?hours=24&mac=${encodeURIComponent(mac)}`;
+                // 選用 oneHour 或 fullDay
+                let allData = [];
+                if (timeWindowSeconds <= 3600) {
+                    allData = Array.isArray(dataSet.oneHour) ? dataSet.oneHour : [];
                 } else {
-                    url = `/api/all_history_posechart?hours=1&mac=${encodeURIComponent(mac)}`;
+                    allData = (Array.isArray(dataSet.fullDay) && dataSet.fullDay.length > 0) 
+                        ? dataSet.fullDay 
+                        : (Array.isArray(dataSet.oneHour) ? dataSet.oneHour : []);
                 }
 
-                const response = await fetch(url);
-                postureChange = await response.json();
+                // 🟢 Debug：顯示目前資料來源 & 筆數
+                console.log("📊 updatePostureChart 用資料來源：", 
+                    timeWindowSeconds <= 3600 ? "oneHour" : 
+                    (dataSet.fullDay.length > 0 ? "fullDay" : "oneHour"),
+                    "筆數：", allData.length
+                );
 
-                postureCache[mac] = postureChange;
-                console.log("📡 從後端抓資料：", postureChange.length);
+                // 🟢 Debug：印前 5 筆 startTime / endTime
+                allData.slice(0, 5).forEach((s, i) => {
+                    console.log(`🔍 allData[${i}]`, {
+                        rawStart: s.startTime,
+                        rawEnd: s.endTime,
+                        normStart: normalizeTimestamp(s.startTime),
+                        normEnd: normalizeTimestamp(s.endTime ?? s.startTime)
+                    });
+                });
 
-                // 檢查資料型態與長度
-                if (!Array.isArray(postureChange) || postureChange.length === 0) {
-                    console.warn("⚠ 沒有資料");
-                    return;
-                }
+                // 🟢 Debug：印時間範圍
+                console.log("⏱ minMs:", minMs, 
+                    luxon.DateTime.fromMillis(minMs).toISO(),
+                    " ~ max:", currentTime.toMillis(), 
+                    luxon.DateTime.fromMillis(currentTime.toMillis()).toISO()
+                );
 
-                // 過濾 MAC
-                let postureChanges = mac 
-                    ? postureChange.filter(s => s.safe_Mac === mac)
-                    : postureChange;
-
-                if (postureChanges.length === 0) {
-                    console.warn("⚠ 指定 MAC 無資料");
-                    return;
-                }
-
-                // 時間單位修正 (確保是毫秒)
-                postureChanges = postureChanges.filter(s => {
+                // === 過濾時間範圍 ===
+                let postureChanges = allData.filter(s => {
                     const startMs = normalizeTimestamp(s.startTime);
                     const endMs = normalizeTimestamp(s.endTime ?? s.startTime);
                     return endMs >= minMs && startMs <= currentTime.toMillis();
-                });
+                }).map(s => ({
+                    ...s,
+                    startTime: normalizeTimestamp(s.startTime),
+                    endTime: normalizeTimestamp(s.endTime ?? s.startTime)
+                }));
 
+                // fallback
                 if (postureChanges.length === 0) {
-                    console.warn("⚠ 過濾後沒資料，改用全部資料");
-                    postureChanges = postureChange.map(s => ({
+                    console.warn("⚠️ postureChanges 過濾後為空，直接用 allData");
+                    postureChanges = allData.map(s => ({
                         ...s,
                         startTime: normalizeTimestamp(s.startTime),
                         endTime: normalizeTimestamp(s.endTime ?? s.startTime)
                     }));
                 }
 
-                const history = postureHistory[currentActiveMac] = [];
-                let last = null;
-
-                postureChanges.forEach(seg => {
-                    const state = String(seg.state);
-                    const startMs = normalizeTimestamp(seg.startTime);
-                    const endMs   = normalizeTimestamp(seg.endTime ?? seg.startTime);
-                    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return;
-
-                    const MAX_GAP = 60 * 1000; // 1 分鐘 gap 視為同一段
-                    if (last && last.state === state && startMs - last.endTime <= MAX_GAP) {
-                        last.endTime = endMs;
-                    } else {
-                        last = { state, startTime: startMs, endTime: endMs };
-                        history.push(last);
-                    }
-                });
-
-                history.sort((a, b) => a.startTime - b.startTime);
-
+                // === Chart.js dataset ===
                 const dataset = {
                     label: "姿態",
                     backgroundColor: [],
@@ -1025,22 +931,24 @@
                     parsing: { xAxisKey: "x", yAxisKey: "y" },
                 };
 
-                history.forEach(segment => {
-                    const label = postureText[segment.state] || "未知";
-                    const color = postureColors[segment.state] || 'gray';
+                postureChanges.forEach(segment => {
+                    const state = String(segment.state);
+                    const startMs = segment.startTime;
+                    const endMs   = segment.endTime;
+
                     dataset.data.push({ 
-                        x: [segment.startTime, segment.endTime], 
-                        y: label,
-                        duration: (segment.endTime - segment.startTime) / 1000
+                        x: [startMs, endMs], 
+                        y: postureText[state] || "未知",
+                        duration: (endMs - startMs) / 1000
                     });
-                    dataset.backgroundColor.push(color);
+                    dataset.backgroundColor.push(postureColors[state] || 'gray');
                 });
 
                 const chartDataset = postureTimelineChart.data.datasets[0];
                 chartDataset.data = dataset.data;
                 chartDataset.backgroundColor = dataset.backgroundColor;
 
-                // 設定時間刻度
+                // === 設定時間軸 ===
                 let unit, stepSizeValue, timeFormat;
                 if (timeWindowSeconds <= 60) {
                     unit = 'second'; stepSizeValue = 10; timeFormat = 'HH:mm:ss';
@@ -1052,46 +960,58 @@
                     unit = 'hour'; stepSizeValue = 1; timeFormat = 'HH:mm';
                 }
 
+                // postureTimelineChart.options.scales.x = {
+                //     type: 'time',
+                //     time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
+                //     min: minMs,
+                //     max: currentTime.toMillis(),
+                //     grid: { display: true, color: '#cccccc' }
+                // };
+                let minBound, maxBound;
+                if (timeWindowSeconds >= 86400) {
+                    // 取資料的最小 / 最大時間
+                    const times = allData.flatMap(s => [
+                        normalizeTimestamp(s.startTime),
+                        normalizeTimestamp(s.endTime ?? s.startTime)
+                    ]).filter(Boolean);                    
+                    minBound = Math.min(...times);
+                    maxBound = Math.max(...times);
+                } else {
+                    minBound = minMs;
+                    maxBound = currentTime.toMillis();
+                }
+                if (timeWindowSeconds >= 86400) {
+                    console.log("🟢 24h mode 範圍：", {
+                        minBound,
+                        minBoundISO: luxon.DateTime.fromMillis(minBound).toISO(),
+                        maxBound,
+                        maxBoundISO: luxon.DateTime.fromMillis(maxBound).toISO()
+                    });
+                }
+
                 postureTimelineChart.options.scales.x = {
                     type: 'time',
                     time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
-                    adapters: {
-                        date: { zone: 'utc' }   // ✅ 不要再轉換時區
-                    },
-                    min: minMs,
-                    max: currentTime.toMillis(),
-                    grid: { display: true, color: '#cccccc', lineWidth: 1, drawTicks: true, drawBorder: false, drawOnChartArea: true },
-                    ticks: {
-                        autoSkip: true,
-                        stepSize: stepSizeValue,
-                        callback: value => luxon.DateTime.fromMillis(value).toFormat(timeFormat)
-                    },
+                    min: minBound,
+                    max: maxBound,
+                    grid: { display: true, color: '#cccccc' }
                 };
 
-                postureTimelineChart.options.scales.x.min = minMs;
-                postureTimelineChart.options.scales.x.max = currentTime.toMillis();
-
-                console.log("📊 圖表時間範圍：", luxon.DateTime.fromMillis(minMs).toFormat("HH:mm:ss"), "~", currentTime.toFormat("HH:mm:ss"));
-                console.log("📊 segment 範圍：", postureChanges.map(s => ({
-                    state: s.state,
-                    start: luxon.DateTime.fromMillis(s.startTime).toFormat("HH:mm:ss"),
-                    end: luxon.DateTime.fromMillis(s.endTime).toFormat("HH:mm:ss")
-                })));
-
-                postureTimelineChart.update('none');  
+                postureTimelineChart.update('none'); // 無動畫更新
 
             } catch (error) {
-                console.error("抓取 API 失敗:", error);
+                console.error("更新圖表失敗:", error);
             }
         }
 
 
         document.addEventListener('DOMContentLoaded', () => {
+            loadCacheFromLocal();   // ✅ 頁面刷新後讀 localStorage
             PostureTimelineChart(); // 初始化圖表結構
             loadTabsState(); // <<<<<< 先讀本機狀態
 
             const theme = {
-                '--theme-bg': '#f6f3e8',
+                '--theme-bg': '#f6f3e8',  
                 '--theme-text': '#333333',
                 '--theme-tab-bg': '#f6f3e8',
                 '--theme-tab-active-bg': '#ffffff',
@@ -1205,21 +1125,23 @@
                     const res = await fetch('/api/last_timestamp');
                     const { last_ts } = await res.json();
                     if (last_ts && last_ts > lastKnownTimestamp) {
-                        console.log("⚡ 偵測到新資料，更新圖表");
+                        // console.log("⚡ 偵測到新資料，更新圖表");
                         lastKnownTimestamp = last_ts;
+                        postureCache[currentActiveMac] = null;
                         updatePostureChart();  // 有新資料才更新
                     }
                 } catch (err) {
                     console.error("檢查最新資料失敗:", err);
                 }
-            }, 3000); // 每 5 秒檢查一次
+            }, 3000); // 每 3 秒檢查一次
 
 
             // 每秒重繪一次圖表（用快取資料，不打 API）
             setInterval(() => {
                 if (currentActiveMac && postureCache[currentActiveMac]) {
                     // 只重繪，不重新 fetch
-                    const history = postureCache[currentActiveMac];
+                    const cache = postureCache[currentActiveMac];
+                    const history = cache.fullDay.length > 0 ? cache.fullDay : cache.oneHour;  // ✅ 選對來源
                     const dataset = postureTimelineChart.data.datasets[0];
                     dataset.data = history.map(seg => ({
                         x: [seg.startTime, seg.endTime],

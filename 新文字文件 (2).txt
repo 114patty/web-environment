@@ -1,12 +1,11 @@
-from flask import Flask, request
-import subprocess
+#!/bin/bash
+cd /opt/web-app || exit
 
-app = Flask(__name__)
+# 拉最新程式碼
+git pull origin main
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    subprocess.run(["/home/utl/deploy.sh"], shell=True)
-    return "OK", 200
+# 重啟 Flask 服務
+sudo systemctl restart flask-web
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=9000)
+# 寫入 log
+echo "[$(date)] 程式已更新並重啟" >> /home/utl/deploy.log

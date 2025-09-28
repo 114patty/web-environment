@@ -1,14 +1,14 @@
 #!/bin/bash
-cd /opt/web-app || exit
+APP_DIR="/home/utl/Desktop/web-environment-main"
+GIT_DIR="/opt/update.git"
 
-# 拉最新程式碼
-git pull origin main
+echo ">>> 部署開始..." >> /home/utl/deploy.log
 
-# 重啟 Flask 服務
-sudo systemctl restart flask-web
+git --work-tree=$APP_DIR --git-dir=$GIT_DIR checkout -f >> /home/utl/deploy.log 2>&1
 
-# 寫入 log
-echo "[$(date)] 程式已更新並重啟" >> /home/utl/deploy.log
+sudo systemctl restart flask.service >> /home/utl/deploy.log 2>&1
+
+echo ">>> 部署完成！" >> /home/utl/deploy.log
 
 -----------------------------------------------
 

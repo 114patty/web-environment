@@ -9,3 +9,19 @@ sudo systemctl restart flask-web
 
 # 寫入 log
 echo "[$(date)] 程式已更新並重啟" >> /home/utl/deploy.log
+
+-----------------------------------------------
+
+#!/bin/bash
+WORK_TREE=/opt/web_app/web_app.py
+GIT_DIR=/opt/update.git
+
+# 把最新程式碼 checkout 出來
+git --work-tree=$WORK_TREE --git-dir=$GIT_DIR checkout -f main
+
+# 切到專案目錄
+cd $WORK_TREE
+
+# 重新啟動 Flask 與 Node.js (用 systemd)
+sudo systemctl restart flask.service
+sudo systemctl restart node.service

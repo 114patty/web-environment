@@ -66,10 +66,11 @@
     </style>
 </head>
 <body>
-    <div id="login-container" style="display:none; color: red; text-align:center; margin-top:10px;">
-        登入已過期，請重新登入。
-    </div>
     <div class="login-container">
+    <div id="expiredMessage" style="display:none; color:red;text-align:center; margin-top:10px;">
+        ❌ 連線已過期，請重新登入
+    </div>
+    
         <h1>登入系統</h1>
         <form id="loginForm">
             <div class="form-group">
@@ -120,7 +121,10 @@
     // 檢查網址中是否包含 ?expired=1
     const params = new URLSearchParams(window.location.search);
     if (params.get('expired') === '1') {
-        document.getElementById('expiredMessage').style.display = 'block';
+        const expiredMsg = document.getElementById('expiredMessage');
+        if (expiredMsg) {
+            expiredMsg.style.display = 'block';
+        }
     }
     </script>
 </body>

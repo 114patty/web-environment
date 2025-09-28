@@ -93,8 +93,8 @@
 </style>
 </head>
 <body>
-    <div id="sidebar-container"></div>
-    <script src="/static/js/sidebar.js" defer></script>
+    <!-- 側邊欄 -->
+    {% include 'partials/sidebar.html' %}
 
 
     <div class="container">
@@ -102,23 +102,72 @@
             <h1 style="margin:0;">飲食紀錄</h1>
         </div>
 
+        <div id="foodList" class="food-list">
+            <p>載入中...</p>
+        </div>
+    </div>
+
 <script>
-  
 
-  
-    // 讀取使用者選擇的主題顏色
-    const bgColor = localStorage.getItem("themeBgColor");
-    const textColor = localStorage.getItem("themeTextColor");
+     // 動態載入食物紀錄
+    async function loadFoodHistory() {
+        try {
+            const res = await fetch("/api/food_history");
+            const data = await res.json();
+            const listEl = document.getElementById("foodList");
 
-    if (bgColor) {
-        document.documentElement.style.setProperty("--theme-bg", bgColor);
-        document.documentElement.style.setProperty("--theme-tab-bg", bgColor);
+            if (!data || data.length === 0) {
+                listEl.innerHTML = "<p>目前沒有飲食紀錄。</p>";
+                return;
+            }
+
+            listEl.innerHTML = ""; // 清空
+
+            data.forEach(item => {
+                const div = document.createElement("div");
+                div.className = "food-item";
+
+                // 食物圖片（若有）
+                const img = document.createElement("img");
+                if (item.image_url) {
+                    img.src = item.image_url; 
+                } else {
+                    img.src = "/static/images/no-image.png"; // 預設圖片
+                }
+
+                // 食物文字資訊
+                const info = document.createElement("div");
+                info.className = "food-info";
+
+                const name = document.createElement("div");
+                name.className = "food-name";
+                name.textContent = item.food || "未知食物";
+
+                const cal = document.createElement("div");
+                cal.className = "food-calories";
+                cal.textContent = `熱量: ${item.calories || "?"} kcal`;
+
+                const time = document.createElement("div");
+                time.className = "food-time";
+                time.textContent = new Date(item.timestamp).toLocaleString();
+
+                info.appendChild(name);
+                info.appendChild(cal);
+                info.appendChild(time);
+
+                div.appendChild(img);
+                div.appendChild(info);
+                listEl.appendChild(div);
+            });
+        } catch (e) {
+            console.error("讀取食物紀錄失敗:", e);
+            document.getElementById("foodList").innerHTML =
+                "<p style='color:red;'>無法讀取飲食紀錄</p>";
+        }
     }
-    if (textColor) {
-        document.documentElement.style.setProperty("--theme-text", textColor);
-    }
 
+    loadFoodHistory();
 
-</script>
+  </script>
 </body>
 </html>

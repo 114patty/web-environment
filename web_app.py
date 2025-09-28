@@ -50,65 +50,26 @@ def hourly_etl():
     last_hour_end = now.replace(minute=0, second=0, microsecond=0)
     last_hour_start = last_hour_end - datetime.timedelta(hours=1)
 
-    # 檢查這一小時是否已經壓縮過
-    check_query = {
-        "startTime": {"$gte": last_hour_start.timestamp()*1000,
-                      "$lt":  last_hour_end.timestamp()*1000}
-    }
-    exists = mongo_segments.count_documents(check_query)
+    for db_name in mongo_client.list_database_names():
+        if db_name in ("admin", "local", "config"):
+            continue
+        mongo_db = mongo_client[db_name]
+        mongo_data = mongo_db["posture_data"]
+        mongo_segments = mongo_db["posture_segments"]
 
-    if exists > 0:
-        print(f"[ETL] {last_hour_start} 已壓縮過，跳過")
-        return
-
-    # 查 raw 資料
-    raw_query = {"timestamp": {"$gte": last_hour_start, "$lt": last_hour_end}}
-    raw_cursor = mongo_data.find(
-        raw_query,
-        {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1}
-    ).sort("timestamp", 1)
-
-    raw_segments = compress_segments(raw_cursor)
-
-    # for seg in raw_segments:
-    #     seg["duration"] = (seg["endTime"] - seg["startTime"]) / 1000.0
-
-    if raw_segments:
-        mongo_segments.insert_many(raw_segments)
-        print(f"[ETL] 壓縮 {last_hour_start} ~ {last_hour_end} → {len(raw_segments)} 段")
-
-
-def full_etl():
-    """把整個歷史資料從 raw 壓縮到 posture_segments"""
-    first_doc = mongo_data.find_one(sort=[("timestamp", 1)])
-    last_doc  = mongo_data.find_one(sort=[("timestamp", -1)])
-
-    if not first_doc or not last_doc:
-        return "⚠️ 沒有資料"
-
-    start_time = first_doc["timestamp"]
-    end_time   = last_doc["timestamp"]
-
-    # 以小時為單位，逐段壓縮
-    current = start_time.replace(minute=0, second=0, microsecond=0)
-    total_segments = 0
-
-    while current < end_time:
-        next_hour = current + datetime.timedelta(hours=1)
-
-        # 檢查這小時是否已經壓縮過
+        # 檢查這一小時是否已經壓縮過
         check_query = {
-            "startTime": {"$gte": current.timestamp()*1000,
-                          "$lt":  next_hour.timestamp()*1000}
+            "startTime": {"$gte": last_hour_start.timestamp()*1000,
+                          "$lt":  last_hour_end.timestamp()*1000}
         }
         exists = mongo_segments.count_documents(check_query)
+
         if exists > 0:
-            print(f"[FULL ETL] {current} 已壓縮過，跳過")
-            current = next_hour
+            print(f"[ETL] {db_name} {last_hour_start} 已壓縮過，跳過")
             continue
 
-        # 找這小時的 raw
-        raw_query = {"timestamp": {"$gte": current, "$lt": next_hour}}
+        # 查 raw 資料
+        raw_query = {"timestamp": {"$gte": last_hour_start, "$lt": last_hour_end}}
         raw_cursor = mongo_data.find(
             raw_query,
             {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1}
@@ -116,16 +77,67 @@ def full_etl():
 
         raw_segments = compress_segments(raw_cursor)
 
-        # for seg in raw_segments:
-        #     seg["duration"] = (seg["endTime"] - seg["startTime"]) / 1000.0
         if raw_segments:
             mongo_segments.insert_many(raw_segments)
-            total_segments += len(raw_segments)
-            print(f"[FULL ETL] 壓縮 {current} ~ {next_hour} → {len(raw_segments)} 段")
+            print(f"[ETL] {db_name} 壓縮 {last_hour_start} ~ {last_hour_end} → {len(raw_segments)} 段")
 
-        current = next_hour
+def full_etl():
+    """把所有資料庫的歷史 raw 壓縮到 posture_segments"""
+    total_segments = 0
+
+    for db_name in mongo_client.list_database_names():
+        if db_name in ("admin", "local", "config"):
+            continue
+
+        mongo_db = mongo_client[db_name]
+        mongo_data = mongo_db["posture_data"]
+        mongo_segments = mongo_db["posture_segments"]
+
+        first_doc = mongo_data.find_one(sort=[("timestamp", 1)])
+        last_doc  = mongo_data.find_one(sort=[("timestamp", -1)])
+
+        if not first_doc or not last_doc:
+            print(f"[FULL ETL] {db_name} ⚠️ 沒有資料")
+            continue
+
+        start_time = first_doc["timestamp"]
+        end_time   = last_doc["timestamp"]
+
+        # 以小時為單位，逐段壓縮
+        current = start_time.replace(minute=0, second=0, microsecond=0)
+
+        while current < end_time:
+            next_hour = current + datetime.timedelta(hours=1)
+
+            # 檢查這小時是否已經壓縮過
+            check_query = {
+                "startTime": {"$gte": current.timestamp()*1000,
+                              "$lt":  next_hour.timestamp()*1000}
+            }
+            exists = mongo_segments.count_documents(check_query)
+            if exists > 0:
+                print(f"[FULL ETL] {db_name} {current} 已壓縮過，跳過")
+                current = next_hour
+                continue
+
+            # 找這小時的 raw
+            raw_query = {"timestamp": {"$gte": current, "$lt": next_hour}}
+            raw_cursor = mongo_data.find(
+                raw_query,
+                {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1}
+            ).sort("timestamp", 1)
+
+            raw_segments = compress_segments(raw_cursor)
+
+            if raw_segments:
+                mongo_segments.insert_many(raw_segments)
+                total_segments += len(raw_segments)
+                print(f"[FULL ETL] {db_name} 壓縮 {current} ~ {next_hour} → {len(raw_segments)} 段")
+
+            current = next_hour
 
     return f"✅ 全部歷史壓縮完成，共寫入 {total_segments} 段"
+
 
 
 
@@ -149,15 +161,16 @@ app.permanent_session_lifetime = timedelta(minutes=10)
 # 假設的帳號密碼 (實際應用中應從數據庫中獲取或使用更安全的驗證方式)
 # 在生產環境中，密碼應該被雜湊處理（hashed），而不是明文儲存。
 USERS = {
-    "admin": "user",
-    "user": "0123"
+    "admin": {"password": "0000","db": "*" },
+    "user": {"password":"0123","db": "*"},
+    "utl": {"password": "2041","db": "2CCF6754457F" }
 }
 
 # --- MongoDB 連線設定 (與樹莓派上的一致) ---
 # MONGO_URI = "mongodb://localhost:27017/" # 網頁應用程式運行在同一台電腦，所以用 localhost
 pd = "20021205patty"
 MONGO_URI = f"mongodb+srv://114patty:{pd}@cluster0.hjdwg6c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-DB_NAME = "F332"
+DB_NAME = "2CCF6754457F"
 COLLECTION_NAME = "posture_data"
 
 # 初始化連線
@@ -176,9 +189,6 @@ mongo_data.create_index([("mac", ASCENDING), ("timestamp", ASCENDING)])
 mongo_data.create_index([("safe_Mac", ASCENDING), ("timestamp", ASCENDING)])
 mongo_segments.create_index([("safe_Mac", ASCENDING), ("startTime", ASCENDING)])
 
-
-# mongo_client = None
-# mongo_collection = None
 
 # 共用裝飾器
 def login_required(f):
@@ -205,6 +215,39 @@ def connect_to_mongodb_web():
         mongo_client = None
         mongo_collection = None
 
+# 依照 session 切換 DB
+def get_collection(name):
+    """根據登入的帳號自動切換 DB 和 collection"""
+    if not session.get("logged_in"):
+        return None
+    db_name = session.get("db_name")   # ✅ 拿使用者對應的 DB
+
+    # ✅ 管理員帳號：看所有樹梅派 DB
+    if db_name == "*":
+        all_collections = []
+        for db_name in mongo_client.list_database_names():
+            # 跳過 MongoDB 系統內建的 DB
+            if db_name in ("admin", "local", "config"):
+                continue
+            try:
+                collection = mongo_client[db_name][name]
+                all_collections.append(collection)
+            except Exception as e:
+                print(f"[WARN] 無法存取 {db_name}.{name}: {e}")
+        return all_collections  # 回傳多個 collection
+
+    # ✅ 一般帳號：只看自己綁定的樹梅派 DB
+    return mongo_client[db_name][name]
+
+# 手動壓縮按鈕(管理專用)
+@app.route('/admin_tools')
+@login_required
+def admin_tools():
+    if session.get("username") != "admin":
+        return redirect(url_for('login_page'))
+    return render_template('admin_tools.html')
+
+
 # 在應用程式啟動時嘗試連接 MongoDB
 connect_to_mongodb_web()
 
@@ -224,10 +267,11 @@ def login():
     username = request.form.get('username')
     password = request.form.get('password')
 
-    if username in USERS and USERS[username] == password:
+    if username in USERS and USERS[username]["password"] == password:
         session.permanent = True  # ✅ 不要設定為永久，讓它關閉視窗就失效
         session['logged_in'] = True
         session['username'] = username # 可選：儲存使用者名稱
+        session['db_name'] = USERS[username]["db"]   # ✅ 存進 session
         return jsonify(success=True)
     else:
         return jsonify(success=False, message='無效的帳號或密碼')
@@ -253,24 +297,87 @@ def data_dashboard():
     # 檔名.html
     return render_template('index.html')
 
+# --- Mac 資料 ---
+@app.route('/api/mac_list')
+def get_mac_list():
+    if not session.get('logged_in'):
+            return jsonify([])  # 沒登入就回傳空
+
+    try:
+        collection = get_collection("posture_data")
+        if collection is None:
+            return jsonify([])
+
+        now = datetime.datetime.now(tz)
+        recent_time = now - datetime.timedelta(hours=24)
+
+        query = {
+            "timestamp": {"$gte": recent_time},
+        }
+
+        macs = []
+
+        if isinstance(collection, list):
+            # ✅ admin → 查全部 DB
+            for coll in collection:
+                macs.extend(coll.distinct("safe_Mac", query))
+        else:
+            # ✅ 一般帳號 → 查單一 DB
+            macs = collection.distinct("safe_Mac", query)
+
+        # 去重複
+        macs = list(set(macs))
+
+        print(f"[DEBUG] macs = {macs}")
+        return jsonify(macs)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500    
+
 # --- 路由：提供最新數據的 API ---
 @app.route('/api/latest_data')
 def get_latest_data():
-    # print("💡 收到 /api/latest_data 請求")
+    if not session.get('logged_in'):
+        return jsonify([])  # 沒登入就回傳空
 
     if mongo_collection is not None:
         try:
-            latest_readings = list(mongo_collection.find().sort("timestamp", -1).limit(100))
-            print(f"[DEBUG] 總共取得 {len(latest_readings)} 筆最新資料")
+            collection = get_collection("posture_data")
+            if collection is None:
+                return jsonify([])
 
-            print("=== 最新資料 ===")
-            # 將 ObjectId 轉換為字串，因為 ObjectId 無法直接 JSON 序列化
-            for doc in latest_readings:
-                doc['_id'] = str(doc['_id'])
-                # if isinstance(doc.get('timestamp'), datetime.datetime):
-                #     local_ts = doc['timestamp'].astimezone(tz)
-                #     doc['timestamp'] = local_ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
-            return jsonify(latest_readings)
+            
+            data = []
+
+            if isinstance(collection, list):
+                # ✅ admin 帳號 → 多個集合，合併查詢
+                for coll in collection:
+                    docs = list(coll.find().sort("timestamp", -1).limit(500))
+                    for doc in docs:
+                        doc["_id"] = str(doc["_id"])
+                    data.extend(docs)
+            else:
+                # ✅ 一般帳號 → 單一集合
+                docs = list(collection.find().sort("timestamp", -1).limit(500))
+                for doc in docs:
+                    doc["_id"] = str(doc["_id"])
+                data.extend(docs)
+
+            # 按照 timestamp 排序（確保不同 DB 的資料能正確混合）
+            data.sort(key=lambda x: x.get("timestamp", datetime.datetime.min), reverse=True)
+
+            # latest_readings = list(mongo_collection.find().sort("timestamp", -1).limit(1000))
+            print(f"[DEBUG] latest_data 返回 {len(data)} 筆資料")
+            return jsonify(data)
+
+            # print("=== 最新資料 ===")
+            # # 將 ObjectId 轉換為字串，因為 ObjectId 無法直接 JSON 序列化
+            # for doc in latest_readings:
+            #     doc['_id'] = str(doc['_id'])
+            #     # if isinstance(doc.get('timestamp'), datetime.datetime):
+            #     #     local_ts = doc['timestamp'].astimezone(tz)
+            #     #     doc['timestamp'] = local_ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]
+            # return jsonify(latest_readings)
         except Exception as e:
             print(f"從 MongoDB 獲取數據失敗: {e}")
             # 如果數據庫連線斷開，嘗試重新連線
@@ -279,39 +386,30 @@ def get_latest_data():
     else:
         # 如果初始連線失敗，這裡也嘗試重新連線
         connect_to_mongodb_web() 
-        return jsonify({"error": "MongoDB not connected"}), 500
-
-# --- Mac 資料 ---
-@app.route('/api/mac_list')
-def get_mac_list():
-    if mongo_collection is not None:
-        try:
-            macs = mongo_collection.distinct('safe_Mac')
-            return jsonify(macs)
-        except Exception as e:
-            return jsonify({"error": "Failed to retrieve MAC list", "details": str(e)}), 500
-    else:
-        connect_to_mongodb_web()
-        return jsonify({"error": "MongoDB not connected"}), 500          
+        return jsonify({"error": "MongoDB not connected"}), 500    
 
 # --- 路由：提供指定時間範圍或全部數據的 API ---
 @app.route('/api/history_data')
 def history_data():
-    if mongo_collection is not None:
+    if not session.get('logged_in'):
+        return jsonify([])
+
         try:
+            collection = get_collection("posture_data")
+            if collection is None:
+                return jsonify([])
+
             minutes = request.args.get("minutes", default=None, type=int)
             hours = request.args.get("hours", default=None, type=int)
-            full = request.args.get("full", default=0, type=int)
             limit   = request.args.get("limit",   default=10000, type=int)
             
             query = {}
+            now = datetime.datetime.now(tz)
 
             if hours:
-                now = datetime.datetime.now(tz)
                 start_time = now - datetime.timedelta(hours=hours)
                 query = {"timestamp": {"$gte": start_time}}
             elif minutes:
-                now = datetime.datetime.now(tz)
                 start_time = now - datetime.timedelta(minutes=minutes)
                 query = {"timestamp": {"$gte": start_time}}
 
@@ -321,93 +419,35 @@ def history_data():
             
 
             data = []
-            cursor = (mongo_collection.find(query)
-                                     .sort("timestamp", -1)  # 遞增，省去 reverse
-                                     .limit(limit))
-            for doc in cursor:
-                doc['_id'] = str(doc['_id'])
-                # if isinstance(doc.get('timestamp'), datetime.datetime):
-                #     doc['timestamp'] = doc['timestamp'].isoformat() + "Z"
-                data.append(doc)
+            # cursor = (mongo_collection.find(query)
+            #                          .sort("timestamp", -1)  # 遞增，省去 reverse
+            #                          .limit(limit))
+            # for doc in cursor:
+            #     doc['_id'] = str(doc['_id'])
+            #     # if isinstance(doc.get('timestamp'), datetime.datetime):
+            #     #     doc['timestamp'] = doc['timestamp'].isoformat() + "Z"
+            #     data.append(doc)
+            if isinstance(collection, list):
+                # ✅ admin → 查全部 DB
+                for coll in collection:
+                    cursor = coll.find(query).sort("timestamp", -1).limit(limit)
+                    for doc in cursor:
+                        doc["_id"] = str(doc["_id"])
+                        data.append(doc)
+            else:
+                # ✅ 一般帳號 → 單一 DB
+                cursor = collection.find(query).sort("timestamp", -1).limit(limit)
+                for doc in cursor:
+                    doc["_id"] = str(doc["_id"])
+                    data.append(doc)
+
+            # 合併排序
+            data.sort(key=lambda x: x.get("timestamp", datetime.datetime.min), reverse=True)
 
             return jsonify(data)
+
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-
-
-# 取history_data壓縮後的資料(姿態圖表用)
-# @app.route('/api/history_posechart')
-# def history_posechart():
-#     print("✅ 收到 /api/history_posechart 請求")
-
-#     try:
-#         minutes = request.args.get("minutes", type=int)
-#         hours   = request.args.get("hours",   default=24,type=int)
-#         limit   = request.args.get("limit",   default=1000, type=int)
-#         mac     = request.args.get("mac") or request.args.get("safe_Mac")
-
-#         query = {}
-#         now = datetime.datetime.now(tz)
-#         # minutes = 30  # 查過去幾分鐘的資料
-#         start_time = now - timedelta(minutes=minutes)
-
-#         query = {
-#             'timestamp': {'$gte': start_time}
-#         }
-
-#         # if minutes is not None:
-#         #     query["timestamp"] = {"$gte": now - datetime.timedelta(minutes=minutes)}
-#         # else:
-#         #     query["timestamp"] = {"$gte": now - datetime.timedelta(hours=hours or 24)}
-
-#         if mac:
-#             query["safe_Mac"] = mac
-
-#         cursor = mongo_collection.find(query).sort("timestamp", 1).limit(limit)
-#         docs = list(cursor)
-#         print(f"[DEBUG] Query: {query}, 找到 {len(docs)} 筆資料")
-
-#         segments = []
-#         segment = None
-#         MAX_GAP_MS = 5 * 60 * 1000
-
-#         for doc in docs:
-#             state_raw = str(doc.get("Posture_state") or doc.get("state") or "unknown")
-#             state = state_raw
-#             mac_v = doc.get("safe_Mac")
-
-#             ts = doc.get("timestamp")
-#             if isinstance(ts, datetime.datetime):
-#                 ts = ts.astimezone(tz)
-#                 ts_ms = int(ts.timestamp() * 1000.0)
-#             else:
-#                 ts_ms = int(dtparser.isoparse(ts).timestamp() * 1000.0)
-
-
-#             if (
-#                 segment
-#                 and segment["state"] == state
-#                 and segment["safe_Mac"] == mac_v
-#                 and ts_ms - segment["endTime"] <= MAX_GAP_MS
-#             ):
-#                 segment["endTime"] = ts_ms
-#             else:
-#                 if segment:
-#                     segments.append(segment)
-#                 segment = {
-#                     "state": state,
-#                     "startTime": ts_ms,
-#                     "endTime": ts_ms,
-#                     "safe_Mac": mac_v,
-#                 }
-
-#         if segment:
-#             segments.append(segment)
-
-#         return jsonify(segments)
-
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/debug_time')
 def debug_time():
@@ -420,7 +460,14 @@ def debug_time():
 
 @app.route('/api/history_posechart')
 def history_posechart():
+    if not session.get('logged_in'):
+        return jsonify([])
+
     try:
+        collection = get_collection("posture_data")
+        if collection is None:
+            return jsonify([])
+
         minutes = request.args.get("minutes", type=int)
         hours   = request.args.get("hours",   type=int)
         full    = request.args.get("full",    default=0, type=int)
@@ -456,164 +503,46 @@ def history_posechart():
         elif mac:
             query["safe_Mac"] = mac
 
-        # ---- pipeline ----
-        pipeline = [
-            {"$match": query},
-            {"$sort": {"timestamp": -1}},
-            {"$limit": limit},
-            {"$sort": {"timestamp": 1}},
-            {"$project": {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1}},
-        ]
-        cursor = mongo_collection.aggregate(pipeline, allowDiskUse=True)
 
-        # ✅ 用共用的壓縮函式
-        docs = list(cursor)
+        # # ---- pipeline ----
+        # pipeline = [
+        #     {"$match": query},
+        #     {"$sort": {"timestamp": -1}},
+        #     {"$limit": limit},
+        #     {"$sort": {"timestamp": 1}},
+        #     {"$project": {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1}},
+        # ]
+        # cursor = mongo_collection.aggregate(pipeline, allowDiskUse=True)
+
+        # # ✅ 用共用的壓縮函式
+        # docs = list(cursor)
+        # segments = compress_segments(docs)
+        # return jsonify(segments)
+        docs = []
+
+        if isinstance(collection, list):
+            # ✅ admin → 查全部 DB
+            for coll in collection:
+                cursor = (coll.find(query, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
+                               .sort("timestamp", -1)
+                               .limit(limit))
+                docs.extend(cursor)
+        else:
+            # ✅ 一般帳號 → 單一 DB
+            cursor = (collection.find(query, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
+                               .sort("timestamp", -1)
+                               .limit(limit))
+            docs.extend(cursor)
+
+        # 先按時間排序再壓縮
+        docs.sort(key=lambda x: x.get("timestamp", datetime.datetime.min))
         segments = compress_segments(docs)
+
+        print(f"[DEBUG] 返回 {len(segments)} 段姿態資料")
         return jsonify(segments)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-    #     # ---- 段落壓縮 ----
-    #     MAX_GAP_MS = 5 * 60 * 1000
-    #     segments, segment = [], None
-    #     last_state = last_mac = None
-    #     last_ts_ms = None
-
-    #     for doc in cursor:
-    #         state = str(doc.get("Posture_state", "unknown"))
-    #         mac_v = doc.get("safe_Mac")
-    #         ts = doc.get("timestamp")
-    #         ts_ms = (ts.timestamp() if isinstance(ts, datetime.datetime)
-    #                  else dtparser.isoparse(ts).timestamp()) * 1000.0
-
-    #         if (segment and last_state == state and last_mac == mac_v ):  # and last_ts_ms is not None and ts_ms - last_ts_ms <= MAX_GAP_MS
-    #             segment["endTime"] = ts_ms
-    #         else:
-    #             if segment:
-    #                 segments.append(segment)
-    #             segment = {
-    #                 "state": state,
-    #                 "startTime": ts_ms,
-    #                 "endTime": ts_ms,
-    #                 "safe_Mac": mac_v,
-    #             }
-
-    #         last_state, last_mac, last_ts_ms = state, mac_v, ts_ms
-
-    #     if segment:
-    #         segments.append(segment)
-
-    #     return jsonify(segments)
-
-    # except Exception as e:
-    #     return jsonify({"error": str(e)}), 500
-
-
-# @app.route('/api/all_history_posechart')
-# def all_history_posechart():
-#     try:
-#         minutes = request.args.get("minutes", type=int)
-#         hours   = request.args.get("hours",   type=int)
-#         full    = request.args.get("full",    default=0, type=int)
-
-#         MAX_LIMIT = 50000
-#         limit = request.args.get("limit", default=10000, type=int) or 10000
-#         limit = min(limit, MAX_LIMIT)
-
-#         # 裝置參數
-#         mac = request.args.get("mac") or request.args.get("safe_Mac")
-#         macs_str = request.args.get("macs")
-#         macs = [m.strip() for m in macs_str.split(",")] if macs_str else None
-
-#         # ---- 時間範圍 ----
-#         now = datetime.datetime.now(tz)
-#         start_time = None
-#         if hours:
-#             if hours > 24:
-#                 return jsonify({"error": "最多只能查 24 小時"}), 400
-#             start_time = now - datetime.timedelta(hours=hours)
-#         elif minutes:
-#             start_time = now - datetime.timedelta(minutes=minutes)
-#         elif not full:
-#             start_time = now - datetime.timedelta(minutes=30)
-
-#         # ---- Query base ----
-#         query = {}
-#         if start_time:
-#             query["startTime"] = {"$gte": start_time.timestamp() * 1000}
-
-#         if macs:
-#             query["safe_Mac"] = {"$in": macs}
-#         elif mac:
-#             query["safe_Mac"] = mac
-
-#         # ---- 查 posture_segments（壓縮過的歷史資料） ----
-#         seg_cursor = (
-#             mongo_collection_segments
-#                 .find(query, {"_id": 0, "safe_Mac": 1, "state": 1, "startTime": 1, "endTime": 1})
-#                 .sort("startTime", 1)
-#                 .limit(limit)
-#         )
-#         seg_docs = list(seg_cursor)
-
-#         # ---- 查今天的 raw，補即時資料 ----
-#         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-#         raw_query = {}
-#         if macs:
-#             raw_query["safe_Mac"] = {"$in": macs}
-#         elif mac:
-#             raw_query["safe_Mac"] = mac
-#         raw_query["timestamp"] = {"$gte": today_start}
-
-#         raw_cursor = (
-#             mongo_collection_raw
-#                 .find(raw_query, {"_id": 0, "timestamp": 1, "Posture_state": 1, "safe_Mac": 1})
-#                 .sort("timestamp", 1)
-#                 .limit(limit)
-#         )
-
-#         # 壓縮 raw → segments
-#         def compress_segments(docs):
-#             MAX_GAP_MS = 5 * 60 * 1000
-#             segments, segment = [], None
-#             last_state = last_mac = None
-#             last_ts_ms = None
-
-#             for doc in docs:
-#                 state = str(doc.get("Posture_state", "unknown"))
-#                 mac_v = doc.get("safe_Mac")
-#                 ts = doc.get("timestamp")
-#                 ts_ms = (ts.timestamp() if isinstance(ts, datetime.datetime)
-#                          else dtparser.isoparse(ts).timestamp()) * 1000.0
-
-#                 if (segment and last_state == state and last_mac == mac_v and
-#                     last_ts_ms is not None and ts_ms - last_ts_ms <= MAX_GAP_MS):
-#                     segment["endTime"] = ts_ms
-#                 else:
-#                     if segment:
-#                         segments.append(segment)
-#                     segment = {"state": state, "startTime": ts_ms, "endTime": ts_ms, "safe_Mac": mac_v}
-
-#                 last_state, last_mac, last_ts_ms = state, mac_v, ts_ms
-
-#             if segment:
-#                 segments.append(segment)
-
-#             return segments
-
-#         raw_segments = compress_segments(raw_cursor)
-
-#         # ---- 合併 posture_segments + raw_segments ----
-#         all_segments = seg_docs + raw_segments
-#         all_segments.sort(key=lambda x: x["startTime"])  # 保證時間順序
-
-#         print(f"[DEBUG] v2 Query: segments={len(seg_docs)}, raw_today={len(raw_segments)}, total={len(all_segments)}")
-
-#         return jsonify(all_segments)
-
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/run_etl')
 def run_etl():
@@ -637,7 +566,15 @@ def last_timestamp():
 
 @app.route('/api/all_history_posechart')
 def all_history_posechart():
-    try:
+    if not session.get('logged_in'):
+        return jsonify([])
+
+    try:        
+        collection_data = get_collection("posture_data")
+        collection_seg  = get_collection("posture_segments")
+        if collection_data is None or collection_seg is None:
+            return jsonify([])
+
         minutes = request.args.get("minutes", type=int)
         hours   = request.args.get("hours",   type=int)
         full    = request.args.get("full",    default=0, type=int)
@@ -646,67 +583,103 @@ def all_history_posechart():
         limit = request.args.get("limit", default=10000, type=int) or 10000
         limit = min(limit, MAX_LIMIT)
 
+        # ---- 時間範圍 ----
+        now = datetime.datetime.now(tz)
+        query_seg ,query_raw = {} ,{}
+
+        if hours:
+            if hours > 24:
+                return jsonify({"error": "最多只能查 24 小時"}), 400
+            query_seg["startTime"] = {"$gte": (now - datetime.timedelta(hours=hours)).timestamp() * 1000}
+            query_raw["timestamp"] = {"$gte": now - datetime.timedelta(hours=hours)}
+        elif minutes:
+            query_seg["startTime"] = {"$gte": (now - datetime.timedelta(minutes=minutes)).timestamp() * 1000}
+            query_raw["timestamp"] = {"$gte": now - datetime.timedelta(minutes=minutes)}
+        elif not full:
+            query_seg["startTime"] = {"$gte": (now - datetime.timedelta(minutes=30)).timestamp() * 1000}
+            query_raw["timestamp"] = {"$gte": now - datetime.timedelta(minutes=30)}
+
+
         # 裝置參數
         mac = request.args.get("mac") or request.args.get("safe_Mac")
         macs_str = request.args.get("macs")
         macs = [m.strip() for m in macs_str.split(",")] if macs_str else None
 
-        # ---- 時間範圍 ----
-        now = datetime.datetime.now(tz)
-        query = {}
-        if hours:
-            if hours > 24:
-                return jsonify({"error": "最多只能查 24 小時"}), 400
-            query["startTime"] = {"$gte": (now - datetime.timedelta(hours=hours)).timestamp() * 1000}
-        elif minutes:
-            query["startTime"] = {"$gte": (now - datetime.timedelta(minutes=minutes)).timestamp() * 1000}
-        elif not full:
-            query["startTime"] = {"$gte": (now - datetime.timedelta(minutes=30)).timestamp() * 1000}
-
         if macs:
-            query["safe_Mac"] = {"$in": macs}
+            query_seg["safe_Mac"] = {"$in": macs}
+            query_raw["safe_Mac"] = {"$in": macs}
         elif mac:
-            query["safe_Mac"] = mac
+            query_seg["safe_Mac"] = mac
+            query_raw["safe_Mac"] = mac
+        
+        seg_docs, raw_segments = [], []
 
         # ---- 查壓縮後的 segments ----
-        seg_cursor = (
-            mongo_segments
-                .find(query, {"_id": 0, "safe_Mac": 1, "state": 1,
-                              "startTime": 1, "endTime": 1})
-                .sort("startTime", 1)
-                .limit(limit)
-        )
-        seg_docs = list(seg_cursor)
+        # seg_cursor = (
+        #     mongo_segments
+        #         .find(query, {"_id": 0, "safe_Mac": 1, "state": 1,
+        #                       "startTime": 1, "endTime": 1})
+        #         .sort("startTime", 1)
+        #         .limit(limit)
+        # )
+        # seg_docs = list(seg_cursor)
+         # ✅ admin → 查全部 DB
+        if isinstance(collection_data, list):
+            for seg_coll, raw_coll in zip(collection_seg, collection_data):
+                seg_cursor = (
+                    seg_coll.find(query_seg, {"_id":0,"safe_Mac":1,"state":1,"startTime":1,"endTime":1})
+                            .sort("startTime", 1)
+                            .limit(limit)
+                )
+                seg_docs.extend(seg_cursor)
+
+                raw_cursor = (
+                    raw_coll.find(query_raw, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
+                            .sort("timestamp", 1)
+                )
+                raw_segments.extend(compress_segments(raw_cursor))
+
+        else:
+            # ✅ 一般帳號 → 查單一 DB
+            seg_cursor = (
+                collection_seg.find(query_seg, {"_id":0,"safe_Mac":1,"state":1,"startTime":1,"endTime":1})
+                             .sort("startTime", 1)
+                             .limit(limit)
+            )
+            seg_docs.extend(seg_cursor)
+
+            raw_cursor = (
+                collection_data.find(query_raw, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
+                            .sort("timestamp", 1)
+            )
+            raw_segments.extend(compress_segments(raw_cursor))
 
         # === 2. 查今天的 raw 資料 ===
         # today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         # raw_query = {"timestamp": {"$gte": today_start}}
-        raw_query = {"timestamp": {"$gte": now - datetime.timedelta(minutes=10)}}
-        if mac:
-            raw_query["safe_Mac"] = mac
-        elif macs:
-            raw_query["safe_Mac"] = {"$in": macs}
+        # raw_query = {"timestamp": {"$gte": now - datetime.timedelta(minutes=10)}}
+        # if mac:
+        #     raw_query["safe_Mac"] = mac
+        # elif macs:
+        #     raw_query["safe_Mac"] = {"$in": macs}
 
-        raw_cursor = (
-            mongo_data
-                .find(raw_query, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
-                .sort("timestamp", 1)
-        )
-        raw_segments = compress_segments(raw_cursor)
+        # raw_cursor = (
+        #     mongo_data
+        #         .find(raw_query, {"_id":0,"timestamp":1,"Posture_state":1,"safe_Mac":1})
+        #         .sort("timestamp", 1)
+        # )
+        # raw_segments = compress_segments(raw_cursor)
 
         # === 3. 合併兩邊的結果 ===
         all_segments = seg_docs + raw_segments
-        all_segments.sort(key=lambda x: x["startTime"])
+        all_segments.sort(key=lambda x: x.get("startTime") or x.get("timestamp", 0))
 
-        print(f"[DEBUG] Query={query}, 返回 {len(seg_docs)} 筆壓縮資料")
-        print(f"[DEBUG] seg={len(seg_docs)}, raw_today={len(raw_segments)}, total={len(all_segments)}")
+        # print(f"[DEBUG] Query={query}, 返回 {len(seg_docs)} 筆壓縮資料")
+        print(f"[DEBUG] seg={len(seg_docs)}, raw={len(raw_segments)}, total={len(all_segments)}")       
         return jsonify(all_segments)
-        # return jsonify(seg_docs)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 
 # --- 路由：提供所有數據的 API (不推薦用於大量數據，僅作範例) ---
@@ -733,6 +706,26 @@ def get_all_data():
     else:
         connect_to_mongodb_web()
         return jsonify({"error": "MongoDB not connected"}), 500
+
+# --- 食物紀錄 --- 
+@app.route('/api/food_history')
+def food_history():
+    if not session.get('logged_in'):
+        return jsonify([])
+
+    try:
+        db = mongo_client[session.get("db_name")]
+        food_coll = db["food_history"]
+
+        docs = list(food_coll.find().sort("timestamp", -1).limit(50))
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            # 加上圖片網址 (如果有存)
+            if "device" in doc and "date" in doc:
+                doc["image_url"] = f"/api/image/device/{doc['device']}/date/{doc['date']}"
+        return jsonify(docs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # --- 主題顏色 ---
 @app.route('/theme')

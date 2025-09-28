@@ -235,9 +235,10 @@
     </style>
 </head>
 <body>
-    
-    <div id="sidebar-container"></div>
-    <script src="/static/js/sidebar.js"></script>
+
+    <!-- 側邊欄 -->
+    {% include 'partials/sidebar.html' %}
+
 
 
     <div class="container">
@@ -459,7 +460,7 @@
 
             if (!(selectedMac in postureHistory)) {
                 postureHistory[selectedMac] = [];    // 初始化姿態歷史
-                lastTimestamps[currentActiveMac] = null;    // 初始化時間
+                lastTimestamps[selectedMac] = null;    // 初始化時間
             }
 
 
@@ -593,8 +594,8 @@
                             callbacks: {
                                 title: ctx => {
                                     const data = ctx[0].raw; 
-                                    const start = luxon.DateTime.fromMillis(data.x[0]).toFormat('HH:mm:ss');
-                                    const end = luxon.DateTime.fromMillis(data.x[1]).toFormat('HH:mm:ss');
+                                    const start = luxon.DateTime.fromMillis(data.x[0]).toFormat('yyyy/MM/dd HH:mm:ss');
+                                    const end = luxon.DateTime.fromMillis(data.x[1]).toFormat('yyyy/MM/dd HH:mm:ss');
                                     return `${start} - ${end}`;
                                 },
                                 label: function (context) {
@@ -730,17 +731,6 @@
         }
 
         // 姿態時間單位換算
-        // function normalizeTimestamp(ts) {
-        //     if (!ts) return null;
-        //     if (typeof ts === 'string') {
-        //         ts = Date.parse(ts);  // 字串轉毫秒
-        //     }
-        //     ts = Number(ts);
-        //     if (!Number.isFinite(ts)) return null;
-        //     if (ts < 1e12) return ts * 1000; // 秒轉毫秒
-        //     return ts;
-        // }
-
         function normalizeTimestamp(ts) {
             if (!ts) return null;
 
@@ -850,7 +840,6 @@
         }
 
 
-
         // 姿態圖表
         async function updatePostureChart() {
             try {
@@ -948,53 +937,64 @@
                 chartDataset.data = dataset.data;
                 chartDataset.backgroundColor = dataset.backgroundColor;
 
+                let maxTicks = 8;
+                if (timeWindowSeconds <= 600) maxTicks = 6;      // 10 分鐘內
+                else if (timeWindowSeconds <= 3600) maxTicks = 8; // 1 小時
+                else if (timeWindowSeconds >= 86400) maxTicks = 12; // 24 小時
+                
                 // === 設定時間軸 ===
                 let unit, stepSizeValue, timeFormat;
                 if (timeWindowSeconds <= 60) {
-                    unit = 'second'; stepSizeValue = 10; timeFormat = 'HH:mm:ss';
+                    unit = 'second'; stepSizeValue = 10; timeFormat = 'HH:mm:ss'; maxTicks = 6;
                 } else if (timeWindowSeconds <= 600) {
-                    unit = 'minute'; stepSizeValue = 1; timeFormat = 'HH:mm';
+                    unit = 'minute'; stepSizeValue = 2; timeFormat = 'HH:mm'; maxTicks = 8;
                 } else if (timeWindowSeconds <= 3600) {
-                    unit = 'minute'; stepSizeValue = 5; timeFormat = 'HH:mm';
+                    unit = 'minute'; stepSizeValue = 5; timeFormat = 'HH:mm'; maxTicks = 10;
                 } else {
-                    unit = 'hour'; stepSizeValue = 1; timeFormat = 'HH:mm';
+                    unit = 'hour'; stepSizeValue = 2; timeFormat = 'HH:mm'; maxTicks = 12;
                 }
 
-                // postureTimelineChart.options.scales.x = {
-                //     type: 'time',
-                //     time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
-                //     min: minMs,
-                //     max: currentTime.toMillis(),
-                //     grid: { display: true, color: '#cccccc' }
-                // };
                 let minBound, maxBound;
                 if (timeWindowSeconds >= 86400) {
                     // 取資料的最小 / 最大時間
                     const times = allData.flatMap(s => [
                         normalizeTimestamp(s.startTime),
                         normalizeTimestamp(s.endTime ?? s.startTime)
-                    ]).filter(Boolean);                    
+                    ]).filter(Boolean);      
+
+                    if (times.length > 0) {
                     minBound = Math.min(...times);
                     maxBound = Math.max(...times);
+
+                    // 如果範圍太小 (< 24h * 0.9)，fallback
+                    const duration = maxBound - minBound;
+                    if (duration < timeWindowSeconds * 0.9 * 1000) {
+                        console.warn("⚠️ 24h mode 資料不足，改用 minMs ~ currentTime 範圍");
+                        minBound = minMs;
+                        maxBound = currentTime.toMillis();
+                    }
                 } else {
+                    // 如果完全沒有資料，也用 minMs
+                    console.warn("⚠️ 24h mode 無資料，改用 minMs ~ currentTime 範圍");
                     minBound = minMs;
                     maxBound = currentTime.toMillis();
                 }
-                if (timeWindowSeconds >= 86400) {
-                    console.log("🟢 24h mode 範圍：", {
-                        minBound,
-                        minBoundISO: luxon.DateTime.fromMillis(minBound).toISO(),
-                        maxBound,
-                        maxBoundISO: luxon.DateTime.fromMillis(maxBound).toISO()
-                    });
-                }
+            } else {
+                // < 24h 時間區間，直接用理論範圍
+                minBound = minMs;
+                maxBound = currentTime.toMillis();
+            }
 
                 postureTimelineChart.options.scales.x = {
                     type: 'time',
                     time: { unit, stepSize: stepSizeValue, displayFormats: { [unit]: timeFormat }, tooltipFormat: timeFormat },
                     min: minBound,
                     max: maxBound,
-                    grid: { display: true, color: '#cccccc' }
+                    grid: { display: true, color: '#cccccc' },
+                    ticks: {
+                        source: 'auto',        // ✅ 讓 Chart.js 自動挑選刻度
+                        maxTicksLimit: maxTicks       // ✅ 最多顯示 8 個 (可依需要調整成 6、10)
+                    }
                 };
 
                 postureTimelineChart.update('none'); // 無動畫更新
@@ -1110,11 +1110,6 @@
                 document.getElementById('contextMenu').style.display = 'none';
             });
 
-            // 圖表更新
-            // setInterval(() => {
-            //     updatePostureChart()
-            //         .catch(err => console.error("自動更新圖表失敗", err))
-            // }, 1000);  // 每 1 秒更新一次
             // 圖表初始化：進來時先抓一次完整 24 小時
             updatePostureChart();
 
@@ -1137,21 +1132,29 @@
 
 
             // 每秒重繪一次圖表（用快取資料，不打 API）
-            setInterval(() => {
-                if (currentActiveMac && postureCache[currentActiveMac]) {
-                    // 只重繪，不重新 fetch
-                    const cache = postureCache[currentActiveMac];
-                    const history = cache.fullDay.length > 0 ? cache.fullDay : cache.oneHour;  // ✅ 選對來源
-                    const dataset = postureTimelineChart.data.datasets[0];
-                    dataset.data = history.map(seg => ({
-                        x: [seg.startTime, seg.endTime],
-                        y: postureText[seg.state] || "未知",
-                        duration: (seg.endTime - seg.startTime) / 1000
-                    }));
-                    dataset.backgroundColor = history.map(seg => postureColors[seg.state] || 'gray');
-                    postureTimelineChart.update('none');
-                }
-            }, 1000);
+        //    setInterval(() => {
+        //         if (currentActiveMac && postureCache[currentActiveMac]) {
+        //             const cache = postureCache[currentActiveMac];
+
+        //             const timeWindowSeconds = Number(document.getElementById('timeWindowSelector').value);
+        //             let history = [];
+
+        //             if (timeWindowSeconds <= 3600) {
+        //                 history = cache.oneHour || [];
+        //             } else {
+        //                 history = (cache.fullDay && cache.fullDay.length > 0) ? cache.fullDay : (cache.oneHour || []);
+        //             }
+
+        //             const dataset = postureTimelineChart.data.datasets[0];
+        //             dataset.data = history.map(seg => ({
+        //                 x: [normalizeTimestamp(seg.startTime), normalizeTimestamp(seg.endTime ?? seg.startTime)],
+        //                 y: postureText[seg.state] || "未知",
+        //                 duration: ((normalizeTimestamp(seg.endTime ?? seg.startTime) - normalizeTimestamp(seg.startTime)) / 1000)
+        //             }));
+        //             dataset.backgroundColor = history.map(seg => postureColors[seg.state] || 'gray');
+        //             postureTimelineChart.update('none');
+        //         }
+        //     }, 1000);
 
         });
 

@@ -9,6 +9,9 @@
         <a href="/home_monitor" id="home-monitor">🛋️ 居家追蹤</a>
         <a href="/theme" id="theme-link">🎨 主題顏色</a>
         <a href="/settings" id="settings">⚙️ 設定</a>
+        {% if session['username'] == 'admin' %}
+        <a href="{{ url_for('admin_tools') }}" id="admin-tools">⚒ 管理工具</a>
+        {% endif %}
         <a href="#" id="logout">🚪 登出</a>
     </div>
     <script>
